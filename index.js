@@ -85,14 +85,10 @@ d3.select('.js-file')
 
                         var p = d3.select('.js-output')
                             .append('div')
-                            .classed('progress round-top fill-darken contain', true);
+                            .classed('progress round-top fill-darken pad0 contain', true);
 
                             p.append('div')
-                                .classed('fill fill-blue pin-left row1 round', true);
-
-                            p.append('p')
-                                .classed('percent center contain z1 dark strong col12 pad1x row1', true)
-                                .text('0');
+                                .classed('fill fill-blue pin-left', true);
 
                         displayData.push({
                                 label: 'Latitude'
@@ -152,10 +148,7 @@ function progress(e) {
     var ratio = 100 / e.todo;
     var percent = parseInt((e.done * ratio), 10);
     d3.select('.fill').style('width', percent + '%');
-    d3.select('.percent').text(percent);
 }
-
-var i = 0;
 
 function transform(obj) {
     return obj.name;
@@ -174,7 +167,7 @@ function done(err, res) {
         .classed('done', true);
 
     d3.select('.js-output')
-        .insert('div', '.table')
+        .insert('div', '.progress')
         .classed('col12 space-bottom2 clearfix export contain z10', true);
 
     var options = d3.select('.export').append('select')

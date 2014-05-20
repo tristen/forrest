@@ -1,4 +1,4 @@
-.limiter { max-width:800px; }
+.limiter { max-width:850px; }
 .dark { color:#fff; }
 .strong { font-weight:bold; }
 body {
@@ -50,7 +50,7 @@ a.fill-green:hover { background-color:#5d964f; color:#fff; }
 .fill-blue          { background-color:#5D85AA; }
 a.fill-blue:hover   { background-color:#44607A; color:#fff; }
 
-.fill-darken {background-color:rgba(0,0,0,0.20); }
+.fill-darken {background-color:rgba(0,0,0,0.05); }
 
 .progress {
   opacity:1;
@@ -67,7 +67,6 @@ a.fill-blue:hover   { background-color:#44607A; color:#fff; }
 .percent { line-height:40px; }
 .percent::after { content:'%' }
 .progress .fill {
-  border-radius:2px;
   -webkit-transition:width 200ms;
      -moz-transition:width 200ms;
       -ms-transition:width 200ms;
@@ -75,8 +74,7 @@ a.fill-blue:hover   { background-color:#44607A; color:#fff; }
 }
 
 .table {
-  overflow-x:scroll;
-  box-shadow:inset -10px -10px 10px rgba(0,0,0,0.10);
+  overflow-x:auto;
   }
 .table table { border:none; }
 table { table-layout:fixed; }

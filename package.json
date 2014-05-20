@@ -21,7 +21,7 @@
   },
   "homepage": "https://github.com/tristen/forrest",
   "dependencies": {
-    "geocode-many": "git://github.com/tristen/geocode-many.git#529b128194a5d2ffcfa30b96bb0b3152bc944de0",
+    "geocode-many": "git://github.com/tristen/geocode-many.git#39cd4fdd591fc3fdba014229978471793c8e0ee5",
     "csv2geojson": "3.7.0",
     "geojson": "0.1.5"
   },
