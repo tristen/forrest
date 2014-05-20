@@ -1,0 +1,34 @@
+{
+  "name": "forrest",
+  "version": "0.0.0",
+  "description": "Find home geocoding csv files",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tristen/forrest.git"
+  },
+  "keywords": [
+    "geocode",
+    "csv"
+  ],
+  "author": "@fallsemo",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tristen/forrest/issues"
+  },
+  "homepage": "https://github.com/tristen/forrest",
+  "dependencies": {
+    "geocode-many": "git://github.com/tristen/geocode-many.git#529b128194a5d2ffcfa30b96bb0b3152bc944de0",
+    "csv2geojson": "3.7.0",
+    "geojson": "0.1.5"
+  },
+  "devDependencies": {
+    "d3": "3.4.6",
+    "uglify-js": "~2.2.5",
+    "browserify": "~2.12.0",
+    "filesaver.js": "2013.1.23"
+  }
+}
