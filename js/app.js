@@ -1,7 +1,8 @@
 ;(function(e,t,n){function i(n,s){if(!t[n]){if(!e[n]){var o=typeof require=="function"&&require;if(!s&&o)return o(n,!0);if(r)return r(n,!0);throw new Error("Cannot find module '"+n+"'")}var u=t[n]={exports:{}};e[n][0].call(u.exports,function(t){var r=e[n][1][t];return i(r?r:t)},u,u.exports)}return t[n].exports}var r=typeof require=="function"&&require;for(var s=0;s<n.length;s++)i(n[s]);return i})({1:[function(require,module,exports){
-var d3 = require('d3');
+d3 = require('d3');
 var geocode = require('geocode-many');
 var geojson = require('geojson');
+var metatable = require('d3-metatable')(d3);
 var saveAs = require('filesaver.js');
 
 // TODO user enters theirs
@@ -89,7 +90,7 @@ d3.select('.js-file')
                             .classed('progress round-top fill-darken pad0 contain', true);
 
                             p.append('div')
-                                .classed('fill fill-blue round-top pin-left round', true);
+                                .classed('fill fill-blue pin-left', true);
 
                         displayData.push({
                                 label: 'Latitude'
@@ -127,9 +128,9 @@ d3.select('.js-file')
 
 function progress(e) {
     var row = data[e.done - 1];
-    var results = e.data.results;
+    var results = (e.data) ? e.data.results : undefined;
 
-    if (results.length && results[0].length) {
+    if (results && results.length && results[0].length) {
         row.latitude = results[0][0].lat;
         row.longitude = results[0][0].lon;
     }
@@ -156,6 +157,15 @@ function transform(obj) {
 }
 
 function done(err, res) {
+    d3.select('table')
+        .html('')
+        .data([data])
+        .call(metatable({
+            newCol: false,
+            deleteCol: false,
+            renameCol: false
+        }));
+
     if (err.length) {
         h1('There was a problem geocoding! <a href="/">Try again?</a>.');
         sub('');
@@ -240,7 +250,208 @@ function detectType(f) {
     }
 }
 
-},{"d3":2,"geocode-many":3,"filesaver.js":4,"geojson":5}],2:[function(require,module,exports){
+},{"d3":2,"geocode-many":3,"d3-metatable":4,"filesaver.js":5,"geojson":6}],4:[function(require,module,exports){
+if (typeof module !== 'undefined') {
+    module.exports = function(d3) {
+        return metatable;
+    };
+}
+
+function metatable(options) {
+    var event = d3.dispatch('change', 'rowfocus');
+
+    var config = {
+        newCol: options.newCol || true,
+        renameCol: options.renameCol || true,
+        deleteCol: options.deleteCol || true
+    };
+
+    function table(selection) {
+        selection.each(function(d) {
+            var sel = d3.select(this),
+                table;
+
+            var keyset = d3.set();
+            d.map(Object.keys).forEach(function(k) {
+                k.forEach(function(_) {
+                    keyset.add(_);
+                });
+            });
+
+            bootstrap();
+            paint();
+
+            function bootstrap() {
+
+                var controls = sel.selectAll('.controls')
+                    .data([d])
+                    .enter()
+                    .append('div')
+                    .attr('class', 'controls');
+
+                if (!config.newCol) {
+                    var colbutton = controls.append('button')
+                        .on('click', function() {
+                            var name = prompt('column name');
+                            if (name) {
+                                keyset.add(name);
+                                paint();
+                            }
+                        });
+                    colbutton.append('span').attr('class', 'icon-plus');
+                    colbutton.append('span').text(' new column');
+                }
+
+                var enter = sel.selectAll('table').data([d]).enter().append('table');
+                var thead = enter.append('thead');
+                var tbody = enter.append('tbody');
+                var tr = thead.append('tr');
+
+                table = sel.select('table');
+            }
+
+            function paint() {
+
+                var keys = keyset.values();
+
+                var th = table
+                    .select('thead')
+                    .select('tr')
+                    .selectAll('th')
+                    .data(keys, function(d) { return d; });
+
+                var thEnter = th.enter().append('th');
+
+                thEnter.append('span')
+                    .text(String);
+
+                th.exit().remove();
+
+                var tr = table.select('tbody').selectAll('tr')
+                    .data(function(d) { return d; });
+
+                tr.enter()
+                    .append('tr');
+
+                tr.exit().remove();
+
+                var td = tr.selectAll('td')
+                    .data(keys, function(d) { return d; });
+
+                td.enter()
+                    .append('td')
+                    .append('input')
+                    .attr('field', String);
+
+                td.exit().remove();
+
+                if (!config.deleteCol) {
+                    var delbutton = thEnter.append('button')
+                        .on('click', deleteClick)
+                        .text('Delete');
+                }
+
+                if (!config.renameCol) {
+                    var renamebutton = thEnter.append('button')
+                        .on('click', renameClick)
+                        .text('Rename');
+                }
+
+                function deleteClick(d) {
+                    var name = d;
+                    if (confirm('Delete column ' + name + '?')) {
+                        keyset.remove(name);
+                        tr.selectAll('input')
+                            .data(function(d, i) {
+                                var map = d3.map(d);
+                                map.remove(name);
+                                var reduced = mapToObject(map);
+                                event.change(reduced, i);
+                                return {
+                                    data: reduced,
+                                    index: i
+                                };
+                            });
+                        paint();
+                    }
+                }
+
+                function renameClick(d) {
+                    var name = d;
+                    var newname = prompt('New name for column ' + name + '?');
+                    if (newname) {
+                        keyset.remove(name);
+                        keyset.add(newname);
+                        tr.selectAll('input')
+                            .data(function(d, i) {
+                                var map = d3.map(d);
+                                map.set(newname, map.get(name));
+                                map.remove(name);
+                                var reduced = mapToObject(map);
+                                event.change(reduced, i);
+                                return {
+                                    data: reduced,
+                                    index: i
+                                };
+                            });
+                        paint();
+                    }
+                }
+
+                function coerceNum(x) {
+                    var fl = parseFloat(x);
+                    if (fl.toString() === x) return fl;
+                    else return x;
+                }
+
+                function write(d) {
+                    d.data[d3.select(this).attr('field')] = coerceNum(this.value);
+                    event.change(d.data, d.index);
+                }
+
+                function mapToObject(map) {
+                    return map.entries()
+                        .reduce(function(memo, d) {
+                            memo[d.key] = d.value;
+                            return memo;
+                        }, {});
+                }
+
+                tr.selectAll('input')
+                    .data(function(d, i) {
+                        return d3.range(keys.length).map(function() {
+                            return {
+                                data: d,
+                                index: i
+                            };
+                        });
+                    })
+                    .classed('disabled', function(d) {
+                        return d.data[d3.select(this).attr('field')] === undefined;
+                    })
+                    .property('value', function(d) {
+                        var value = d.data[d3.select(this).attr('field')];
+                        return !isNaN(value) ? value : value || '';
+                    })
+                    .on('keyup', write)
+                    .on('change', write)
+                    .on('click', function(d) {
+                        if (d.data[d3.select(this).attr('field')] === undefined) {
+                            d.data[d3.select(this).attr('field')] = '';
+                            paint();
+                        }
+                    })
+                    .on('focus', function(d) {
+                        event.rowfocus(d.data, d.index);
+                    });
+            }
+        });
+    }
+
+    return d3.rebind(table, event, 'on');
+}
+
+},{}],2:[function(require,module,exports){
 !function() {
   var d3 = {
     version: "3.4.6"
@@ -9504,7 +9715,7 @@ function detectType(f) {
     this.d3 = d3;
   }
 }();
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 (function(){/* FileSaver.js
  * A saveAs() FileSaver implementation.
  * 2013-01-23
@@ -9725,7 +9936,7 @@ var saveAs = saveAs
 if (typeof module !== 'undefined') module.exports = saveAs;
 
 })()
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 (function(GeoJSON) {
   GeoJSON.version = '0.1.5';
 
@@ -9918,88 +10129,6 @@ if (typeof module !== 'undefined') module.exports = saveAs;
   }
 
 }(typeof module == 'object' ? module.exports : window.GeoJSON = {}));
-},{}],6:[function(require,module,exports){
-(function() {
-  var slice = [].slice;
-
-  function queue(parallelism) {
-    var q,
-        tasks = [],
-        started = 0, // number of tasks that have been started (and perhaps finished)
-        active = 0, // number of tasks currently being executed (started but not finished)
-        remaining = 0, // number of tasks not yet finished
-        popping, // inside a synchronous task callback?
-        error = null,
-        await = noop,
-        all;
-
-    if (!parallelism) parallelism = Infinity;
-
-    function pop() {
-      while (popping = started < tasks.length && active < parallelism) {
-        var i = started++,
-            t = tasks[i],
-            a = slice.call(t, 1);
-        a.push(callback(i));
-        ++active;
-        t[0].apply(null, a);
-      }
-    }
-
-    function callback(i) {
-      return function(e, r) {
-        --active;
-        if (error != null) return;
-        if (e != null) {
-          error = e; // ignore new tasks and squelch active callbacks
-          started = remaining = NaN; // stop queued tasks from starting
-          notify();
-        } else {
-          tasks[i] = r;
-          if (--remaining) popping || pop();
-          else notify();
-        }
-      };
-    }
-
-    function notify() {
-      if (error != null) await(error);
-      else if (all) await(error, tasks);
-      else await.apply(null, [error].concat(tasks));
-    }
-
-    return q = {
-      defer: function() {
-        if (!error) {
-          tasks.push(arguments);
-          ++remaining;
-          pop();
-        }
-        return q;
-      },
-      await: function(f) {
-        await = f;
-        all = false;
-        if (!remaining) notify();
-        return q;
-      },
-      awaitAll: function(f) {
-        await = f;
-        all = true;
-        if (!remaining) notify();
-        return q;
-      }
-    };
-  }
-
-  function noop() {}
-
-  queue.version = "1.0.7";
-  if (typeof define === "function" && define.amd) define(function() { return queue; });
-  else if (typeof module === "object" && module.exports) module.exports = queue;
-  else this.queue = queue;
-})();
-
 },{}],3:[function(require,module,exports){
 (function(global){!function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.geocodemany=e():"undefined"!=typeof global?global.geocodemany=e():"undefined"!=typeof self&&(self.geocodemany=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 var d3 = require('d3');
@@ -19446,5 +19575,87 @@ function geocodemany(mapid, throttle) {
 });
 ;
 })(window)
-},{"queue-async":6,"d3":2}]},{},[1])
+},{"queue-async":7,"d3":2}],7:[function(require,module,exports){
+(function() {
+  var slice = [].slice;
+
+  function queue(parallelism) {
+    var q,
+        tasks = [],
+        started = 0, // number of tasks that have been started (and perhaps finished)
+        active = 0, // number of tasks currently being executed (started but not finished)
+        remaining = 0, // number of tasks not yet finished
+        popping, // inside a synchronous task callback?
+        error = null,
+        await = noop,
+        all;
+
+    if (!parallelism) parallelism = Infinity;
+
+    function pop() {
+      while (popping = started < tasks.length && active < parallelism) {
+        var i = started++,
+            t = tasks[i],
+            a = slice.call(t, 1);
+        a.push(callback(i));
+        ++active;
+        t[0].apply(null, a);
+      }
+    }
+
+    function callback(i) {
+      return function(e, r) {
+        --active;
+        if (error != null) return;
+        if (e != null) {
+          error = e; // ignore new tasks and squelch active callbacks
+          started = remaining = NaN; // stop queued tasks from starting
+          notify();
+        } else {
+          tasks[i] = r;
+          if (--remaining) popping || pop();
+          else notify();
+        }
+      };
+    }
+
+    function notify() {
+      if (error != null) await(error);
+      else if (all) await(error, tasks);
+      else await.apply(null, [error].concat(tasks));
+    }
+
+    return q = {
+      defer: function() {
+        if (!error) {
+          tasks.push(arguments);
+          ++remaining;
+          pop();
+        }
+        return q;
+      },
+      await: function(f) {
+        await = f;
+        all = false;
+        if (!remaining) notify();
+        return q;
+      },
+      awaitAll: function(f) {
+        await = f;
+        all = true;
+        if (!remaining) notify();
+        return q;
+      }
+    };
+  }
+
+  function noop() {}
+
+  queue.version = "1.0.7";
+  if (typeof define === "function" && define.amd) define(function() { return queue; });
+  else if (typeof module === "object" && module.exports) module.exports = queue;
+  else this.queue = queue;
+})();
+
+},{}]},{},[1])
 ;
