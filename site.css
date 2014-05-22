@@ -79,3 +79,16 @@ a.fill-blue:hover   { background-color:#44607A; color:#fff; }
 .table table { border:none; }
 table { table-layout:fixed; }
 th, td { width:120px; }
+
+.table table td {
+  padding:0;
+  }
+  .table table td input:hover {
+    background-color:rgba(0,0,0,0.05);
+    }
+  .table table td input {
+    border:none;
+    margin:0;
+    padding:8px;
+    width:120px;
+    }
