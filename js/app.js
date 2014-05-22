@@ -158,12 +158,16 @@ function transform(obj) {
 
 function done(err, res) {
     d3.select('table')
+        .classed('editable', true)
         .html('')
         .data([data])
         .call(metatable({
             newCol: false,
             deleteCol: false,
             renameCol: false
+        }).on('change', function(d, i) {
+            console.log(d);
+            data[i] = d;
         }));
 
     if (err.length) {
@@ -258,7 +262,8 @@ if (typeof module !== 'undefined') {
 }
 
 function metatable(options) {
-    var event = d3.dispatch('change', 'rowfocus');
+    var event = d3.dispatch('change', 'rowfocus', 'renameprompt', 'deleteprompt', 'preventprompt');
+    var _renamePrompt, _deletePrompt;
 
     var config = {
         newCol: options.newCol || true,
@@ -281,25 +286,37 @@ function metatable(options) {
             bootstrap();
             paint();
 
+            event.preventprompt = function(which) {
+                switch(which) {
+                    case 'rename':
+                        _renamePrompt = true;
+                    break;
+                    case 'delete':
+                        _deletePrompt = true;
+                    break;
+                }
+            };
+
             function bootstrap() {
 
                 var controls = sel.selectAll('.controls')
                     .data([d])
                     .enter()
-                    .append('div')
-                    .attr('class', 'controls');
+                    .append('div');
 
                 if (!config.newCol) {
-                    var colbutton = controls.append('button')
+                    var colbutton = controls.append('a')
+                        .text('New column')
+                        .attr('href', '#')
+                        .attr('class', 'button icon plus')
                         .on('click', function() {
+                            d3.event.preventDefault();
                             var name = prompt('column name');
                             if (name) {
                                 keyset.add(name);
                                 paint();
                             }
                         });
-                    colbutton.append('span').attr('class', 'icon-plus');
-                    colbutton.append('span').text(' new column');
                 }
 
                 var enter = sel.selectAll('table').data([d]).enter().append('table');
@@ -320,19 +337,38 @@ function metatable(options) {
                     .selectAll('th')
                     .data(keys, function(d) { return d; });
 
-                var thEnter = th.enter().append('th');
-
-                thEnter.append('span')
+                var thEnter = th.enter()
+                    .append('th')
                     .text(String);
+
+                var actionLinks = thEnter
+                    .append('div')
+                    .attr('class', 'small');
+
+                if (!config.deleteCol) {
+                    var delbutton = actionLinks
+                        .append('a')
+                        .attr('href', '#')
+                        .attr('class', 'icon trash')
+                        .text('Delete')
+                        .on('click', deleteClick);
+                }
+
+                if (!config.renameCol) {
+                    var renamebutton = actionLinks
+                        .append('a')
+                        .attr('href', '#')
+                        .attr('class', 'icon pencil')
+                        .text('Rename')
+                        .on('click', renameClick);
+                }
 
                 th.exit().remove();
 
                 var tr = table.select('tbody').selectAll('tr')
                     .data(function(d) { return d; });
 
-                tr.enter()
-                    .append('tr');
-
+                tr.enter().append('tr');
                 tr.exit().remove();
 
                 var td = tr.selectAll('td')
@@ -341,61 +377,66 @@ function metatable(options) {
                 td.enter()
                     .append('td')
                     .append('input')
+                    .attr('type', 'text')
                     .attr('field', String);
 
                 td.exit().remove();
 
-                if (!config.deleteCol) {
-                    var delbutton = thEnter.append('button')
-                        .on('click', deleteClick)
-                        .text('Delete');
-                }
-
-                if (!config.renameCol) {
-                    var renamebutton = thEnter.append('button')
-                        .on('click', renameClick)
-                        .text('Rename');
-                }
-
                 function deleteClick(d) {
+                    d3.event.preventDefault();
                     var name = d;
-                    if (confirm('Delete column ' + name + '?')) {
-                        keyset.remove(name);
-                        tr.selectAll('input')
-                            .data(function(d, i) {
-                                var map = d3.map(d);
-                                map.remove(name);
-                                var reduced = mapToObject(map);
-                                event.change(reduced, i);
-                                return {
-                                    data: reduced,
-                                    index: i
-                                };
-                            });
-                        paint();
+                    event.deleteprompt(d, completeDelete);
+                    if (_deletePrompt || confirm('Delete column ' + name + '?')) {
+                        completeDelete(d);
                     }
+                }
+
+                function completeDelete(name) {
+                    keyset.remove(name);
+                    tr.selectAll('input')
+                        .data(function(d, i) {
+                            var map = d3.map(d);
+                            map.remove(name);
+                            var reduced = mapToObject(map);
+                            event.change(reduced, i);
+                            return {
+                                data: reduced,
+                                index: i
+                            };
+                        });
+                    paint();
                 }
 
                 function renameClick(d) {
+                    d3.event.preventDefault();
                     var name = d;
-                    var newname = prompt('New name for column ' + name + '?');
-                    if (newname) {
-                        keyset.remove(name);
-                        keyset.add(newname);
-                        tr.selectAll('input')
-                            .data(function(d, i) {
-                                var map = d3.map(d);
-                                map.set(newname, map.get(name));
-                                map.remove(name);
-                                var reduced = mapToObject(map);
-                                event.change(reduced, i);
-                                return {
-                                    data: reduced,
-                                    index: i
-                                };
-                            });
-                        paint();
+                    event.renameprompt(d, completeRename);
+
+                    var newname = (_renamePrompt) ?
+                        undefined :
+                        prompt('New name for column ' + name + '?');
+
+                    if (_renamePrompt || newname) {
+                        completeRename(newname, name);
                     }
+                }
+
+                function completeRename(value, name) {
+                    keyset.add(value);
+                    keyset.remove(name);
+                    tr.selectAll('input')
+                        .data(function(d, i) {
+                            var map = d3.map(d);
+                            map.set(value, map.get(name));
+                            map.remove(name);
+                            var reduced = mapToObject(map);
+                            event.change(reduced, i);
+                            return {
+                                data: reduced,
+                                index: i
+                            };
+                        });
+                    paint();
                 }
 
                 function coerceNum(x) {
@@ -10129,6 +10170,88 @@ if (typeof module !== 'undefined') module.exports = saveAs;
   }
 
 }(typeof module == 'object' ? module.exports : window.GeoJSON = {}));
+},{}],7:[function(require,module,exports){
+(function() {
+  var slice = [].slice;
+
+  function queue(parallelism) {
+    var q,
+        tasks = [],
+        started = 0, // number of tasks that have been started (and perhaps finished)
+        active = 0, // number of tasks currently being executed (started but not finished)
+        remaining = 0, // number of tasks not yet finished
+        popping, // inside a synchronous task callback?
+        error = null,
+        await = noop,
+        all;
+
+    if (!parallelism) parallelism = Infinity;
+
+    function pop() {
+      while (popping = started < tasks.length && active < parallelism) {
+        var i = started++,
+            t = tasks[i],
+            a = slice.call(t, 1);
+        a.push(callback(i));
+        ++active;
+        t[0].apply(null, a);
+      }
+    }
+
+    function callback(i) {
+      return function(e, r) {
+        --active;
+        if (error != null) return;
+        if (e != null) {
+          error = e; // ignore new tasks and squelch active callbacks
+          started = remaining = NaN; // stop queued tasks from starting
+          notify();
+        } else {
+          tasks[i] = r;
+          if (--remaining) popping || pop();
+          else notify();
+        }
+      };
+    }
+
+    function notify() {
+      if (error != null) await(error);
+      else if (all) await(error, tasks);
+      else await.apply(null, [error].concat(tasks));
+    }
+
+    return q = {
+      defer: function() {
+        if (!error) {
+          tasks.push(arguments);
+          ++remaining;
+          pop();
+        }
+        return q;
+      },
+      await: function(f) {
+        await = f;
+        all = false;
+        if (!remaining) notify();
+        return q;
+      },
+      awaitAll: function(f) {
+        await = f;
+        all = true;
+        if (!remaining) notify();
+        return q;
+      }
+    };
+  }
+
+  function noop() {}
+
+  queue.version = "1.0.7";
+  if (typeof define === "function" && define.amd) define(function() { return queue; });
+  else if (typeof module === "object" && module.exports) module.exports = queue;
+  else this.queue = queue;
+})();
+
 },{}],3:[function(require,module,exports){
 (function(global){!function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.geocodemany=e():"undefined"!=typeof global?global.geocodemany=e():"undefined"!=typeof self&&(self.geocodemany=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 var d3 = require('d3');
@@ -19575,87 +19698,5 @@ function geocodemany(mapid, throttle) {
 });
 ;
 })(window)
-},{"queue-async":7,"d3":2}],7:[function(require,module,exports){
-(function() {
-  var slice = [].slice;
-
-  function queue(parallelism) {
-    var q,
-        tasks = [],
-        started = 0, // number of tasks that have been started (and perhaps finished)
-        active = 0, // number of tasks currently being executed (started but not finished)
-        remaining = 0, // number of tasks not yet finished
-        popping, // inside a synchronous task callback?
-        error = null,
-        await = noop,
-        all;
-
-    if (!parallelism) parallelism = Infinity;
-
-    function pop() {
-      while (popping = started < tasks.length && active < parallelism) {
-        var i = started++,
-            t = tasks[i],
-            a = slice.call(t, 1);
-        a.push(callback(i));
-        ++active;
-        t[0].apply(null, a);
-      }
-    }
-
-    function callback(i) {
-      return function(e, r) {
-        --active;
-        if (error != null) return;
-        if (e != null) {
-          error = e; // ignore new tasks and squelch active callbacks
-          started = remaining = NaN; // stop queued tasks from starting
-          notify();
-        } else {
-          tasks[i] = r;
-          if (--remaining) popping || pop();
-          else notify();
-        }
-      };
-    }
-
-    function notify() {
-      if (error != null) await(error);
-      else if (all) await(error, tasks);
-      else await.apply(null, [error].concat(tasks));
-    }
-
-    return q = {
-      defer: function() {
-        if (!error) {
-          tasks.push(arguments);
-          ++remaining;
-          pop();
-        }
-        return q;
-      },
-      await: function(f) {
-        await = f;
-        all = false;
-        if (!remaining) notify();
-        return q;
-      },
-      awaitAll: function(f) {
-        await = f;
-        all = true;
-        if (!remaining) notify();
-        return q;
-      }
-    };
-  }
-
-  function noop() {}
-
-  queue.version = "1.0.7";
-  if (typeof define === "function" && define.amd) define(function() { return queue; });
-  else if (typeof module === "object" && module.exports) module.exports = queue;
-  else this.queue = queue;
-})();
-
-},{}]},{},[1])
+},{"queue-async":7,"d3":2}]},{},[1])
 ;

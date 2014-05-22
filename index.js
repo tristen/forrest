@@ -157,12 +157,16 @@ function transform(obj) {
 
 function done(err, res) {
     d3.select('table')
+        .classed('editable', true)
         .html('')
         .data([data])
         .call(metatable({
             newCol: false,
             deleteCol: false,
             renameCol: false
+        }).on('change', function(d, i) {
+            console.log(d);
+            data[i] = d;
         }));
 
     if (err.length) {
