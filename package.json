@@ -21,14 +21,15 @@
   },
   "homepage": "https://github.com/tristen/forrest",
   "dependencies": {
-    "geocode-many": "git://github.com/tristen/geocode-many.git#39cd4fdd591fc3fdba014229978471793c8e0ee5",
+    "d3": "3.4.6",
+    "geocode-many": "git://github.com/tristen/geocode-many.git#39cd4fdd591fc3fdb",
+    "d3-metatable": "git://github.com/tristen/d3-metatable.git#0c89b406c92dc0541",
     "csv2geojson": "3.7.0",
-    "geojson": "0.1.5"
+    "geojson": "0.1.5",
+    "filesaver.js": "2013.1.23"
   },
   "devDependencies": {
-    "d3": "3.4.6",
     "uglify-js": "~2.2.5",
-    "browserify": "~2.12.0",
-    "filesaver.js": "2013.1.23"
+    "browserify": "~2.12.0"
   }
 }

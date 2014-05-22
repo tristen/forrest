@@ -1,6 +1,7 @@
-var d3 = require('d3');
+d3 = require('d3');
 var geocode = require('geocode-many');
 var geojson = require('geojson');
+var metatable = require('d3-metatable')(d3);
 var saveAs = require('filesaver.js');
 
 // TODO user enters theirs
@@ -126,9 +127,9 @@ d3.select('.js-file')
 
 function progress(e) {
     var row = data[e.done - 1];
-    var results = e.data.results;
+    var results = (e.data) ? e.data.results : undefined;
 
-    if (results.length && results[0].length) {
+    if (results && results.length && results[0].length) {
         row.latitude = results[0][0].lat;
         row.longitude = results[0][0].lon;
     }
@@ -155,6 +156,19 @@ function transform(obj) {
 }
 
 function done(err, res) {
+    d3.select('table')
+        .classed('editable', true)
+        .html('')
+        .data([data])
+        .call(metatable({
+            newCol: false,
+            deleteCol: false,
+            renameCol: false
+        }).on('change', function(d, i) {
+            console.log(d);
+            data[i] = d;
+        }));
+
     if (err.length) {
         h1('There was a problem geocoding! <a href="/">Try again?</a>.');
         sub('');
