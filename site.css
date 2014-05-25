@@ -43,6 +43,11 @@ label:hover {
   font-weight:bold;
   color:#fff;
   }
+.pill .button {
+  position:relative;
+  top:2px;
+  border:1px solid rgba(0,0,0,0.25);
+  }
 
 .fill-green        { background-color:#6CAA5D; }
 a.fill-green:hover { background-color:#5d964f; color:#fff; }
@@ -107,3 +112,59 @@ select:hover { background:rgba(0,0,0,0.05); }
     width:122px;
     font-size:16px;
     }
+
+.sprite {
+  background:url(img/sprite@2x.png) no-repeat 0 0;
+  display:inline-block;
+  width:40px;
+  height:40px;
+  background-size:40px 40px;
+  text-indent:-999em;
+  }
+  .sprite.sprocket { background-position:0 0; }
+
+.sprite.tooltip { text-indent:0; }
+
+.tooltip {
+  position:relative;
+  }
+.tooltip span {
+  position:absolute;
+  background:#fff;
+  display:none;
+  border-radius:3px;
+  width:120px;
+  }
+  .tooltip span:after {
+    content:'';
+    display:block;
+    position:absolute;
+    }
+  .tooltip:hover span {
+    display:block;
+    }
+  .tooltip span:hover {
+    background-color:rgba(0,0,0,0.05);
+    }
+  .tooltip-bottomright span {
+    right:-120px;
+    bottom:10px;
+    }
+    .tooltip-bottomright span:after {
+      border-top:5px solid transparent;
+      border-bottom:5px solid transparent;
+      border-right:5px solid rgba(0,0,0,0.5);
+      bottom:5px;
+      left:-5px;
+      }
+
+  .tooltip-topleft span {
+    left:-120px;
+    }
+    .tooltip-topleft span:after {
+      border-top:5px solid transparent;
+      border-bottom:5px solid transparent;
+      border-left:5px solid rgba(0,0,0,0.5);
+      top:5px;
+      right:-5px;
+      }

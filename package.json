@@ -22,10 +22,12 @@
   "homepage": "https://github.com/tristen/forrest",
   "dependencies": {
     "d3": "3.4.6",
+    "wookie": "~0.0.0",
     "geocode-many": "git://github.com/tristen/geocode-many.git#39cd4fdd591fc3fdb",
     "d3-metatable": "git://github.com/tristen/d3-metatable.git#0c89b406c92dc0541",
     "csv2geojson": "3.7.0",
     "geojson": "0.1.5",
+    "mapbox.js": "~1.6.3",
     "filesaver.js": "2013.1.23"
   },
   "devDependencies": {

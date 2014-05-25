@@ -1,11 +1,12 @@
 d3 = require('d3');
+// require('mapbox.js');
 var geocode = require('geocode-many');
 var geojson = require('geojson');
 var metatable = require('d3-metatable')(d3);
 var saveAs = require('filesaver.js');
+var cookie = require('wookie');
 
-// TODO user enters theirs
-var mapid = 'tristen.map-4s93c8qx';
+var mapid;
 var set = d3.set([]);
 var data = [];
 var exportOptions = [{
@@ -19,7 +20,59 @@ var exportOptions = [{
     value: 'geojson'
 }];
 
-d3.select('.js-import')
+if (!cookie.get('mapid')) {
+    h1('Enter a Mapbox Map ID');
+    sub('A <a href="https://www.mapbox.com/foundations/glossary/#mapid">Map ID</a> is a unique identifier to a map you have created on <a href="https://mapbox.com">Mapbox.com</a>');
+
+    var form = d3.select('.js-output')
+        .append('div')
+        .classed('col6 margin3 pad2y pill', true);
+
+    form.append('input')
+        .attr('type', 'text')
+        .attr('placeholder', 'username.mapid')
+        .classed('pad1 col8', true);
+
+    form.append('a')
+        .attr('href', '#')
+        .text('submit')
+        .classed('button fill-green pad1 col4', true)
+        .on('click', function() {
+            var val;
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+
+            d3.select('input[type=text]').html(function() {
+                val = this.value;
+            });
+
+            if (val.length) {
+                d3.json('http://a.tiles.mapbox.com/v3/' + val + '.json', function(error, json) {
+                    if (error) {
+                        h1('Unknown Map ID. <a href="/">Try again?</a>.');
+                    } else {
+                        cookie.set('mapid', val);
+                        init();
+                    }
+                });
+            }
+        });
+
+} else {
+    init();
+}
+
+function init() {
+    mapid = cookie.get('mapid');
+    h1('Import a comma separated file');
+    sub('Could be a .csv, .tsv, or .dsv file.');
+
+    d3.select('.js-output')
+    .html('')
+    .append('a')
+    .attr('href', '#')
+    .classed('button fill-green round pad2 col6 margin3', true)
+    .text('Add')
     .on('click', function() {
         d3.event.stopPropagation();
         d3.event.preventDefault();
@@ -27,6 +80,21 @@ d3.select('.js-import')
         event.initEvent('click', true, false);
         document.getElementById('import').dispatchEvent(event);
     });
+
+    d3.select('body')
+        .append('div')
+        .classed('pin-bottom pad0x', true)
+        .append('a')
+        .attr('href', '#')
+        .classed('sprite sprocket tooltip tooltip-bottomright', true)
+        .html('<span class="round small keyline-all pad1">Clear stored Map ID?</span>')
+        .on('click', function() {
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+            cookie.unset('mapid');
+            location.reload();
+        });
+}
 
 d3.select('.js-file')
     .on('change', function() {

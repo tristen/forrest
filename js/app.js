@@ -1,12 +1,13 @@
 ;(function(e,t,n){function i(n,s){if(!t[n]){if(!e[n]){var o=typeof require=="function"&&require;if(!s&&o)return o(n,!0);if(r)return r(n,!0);throw new Error("Cannot find module '"+n+"'")}var u=t[n]={exports:{}};e[n][0].call(u.exports,function(t){var r=e[n][1][t];return i(r?r:t)},u,u.exports)}return t[n].exports}var r=typeof require=="function"&&require;for(var s=0;s<n.length;s++)i(n[s]);return i})({1:[function(require,module,exports){
 d3 = require('d3');
+// require('mapbox.js');
 var geocode = require('geocode-many');
 var geojson = require('geojson');
 var metatable = require('d3-metatable')(d3);
 var saveAs = require('filesaver.js');
+var cookie = require('wookie');
 
-// TODO user enters theirs
-var mapid = 'tristen.map-4s93c8qx';
+var mapid;
 var set = d3.set([]);
 var data = [];
 var exportOptions = [{
@@ -20,7 +21,59 @@ var exportOptions = [{
     value: 'geojson'
 }];
 
-d3.select('.js-import')
+if (!cookie.get('mapid')) {
+    h1('Enter a Mapbox Map ID');
+    sub('A <a href="https://www.mapbox.com/foundations/glossary/#mapid">Map ID</a> is a unique identifier to a map you have created on <a href="https://mapbox.com">Mapbox.com</a>');
+
+    var form = d3.select('.js-output')
+        .append('div')
+        .classed('col6 margin3 pad2y pill', true);
+
+    form.append('input')
+        .attr('type', 'text')
+        .attr('placeholder', 'username.mapid')
+        .classed('pad1 col8', true);
+
+    form.append('a')
+        .attr('href', '#')
+        .text('submit')
+        .classed('button fill-green pad1 col4', true)
+        .on('click', function() {
+            var val;
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+
+            d3.select('input[type=text]').html(function() {
+                val = this.value;
+            });
+
+            if (val.length) {
+                d3.json('http://a.tiles.mapbox.com/v3/' + val + '.json', function(error, json) {
+                    if (error) {
+                        h1('Unknown Map ID. <a href="/">Try again?</a>.');
+                    } else {
+                        cookie.set('mapid', val);
+                        init();
+                    }
+                });
+            }
+        });
+
+} else {
+    init();
+}
+
+function init() {
+    mapid = cookie.get('mapid');
+    h1('Import a comma separated file');
+    sub('Could be a .csv, .tsv, or .dsv file.');
+
+    d3.select('.js-output')
+    .html('')
+    .append('a')
+    .attr('href', '#')
+    .classed('button fill-green round pad2 col6 margin3', true)
+    .text('Add')
     .on('click', function() {
         d3.event.stopPropagation();
         d3.event.preventDefault();
@@ -28,6 +81,21 @@ d3.select('.js-import')
         event.initEvent('click', true, false);
         document.getElementById('import').dispatchEvent(event);
     });
+
+    d3.select('body')
+        .append('div')
+        .classed('pin-bottom pad0x', true)
+        .append('a')
+        .attr('href', '#')
+        .classed('sprite sprocket tooltip tooltip-bottomright', true)
+        .html('<span class="round small keyline-all pad1">Clear stored Map ID?</span>')
+        .on('click', function() {
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+            cookie.unset('mapid');
+            location.reload();
+        });
+}
 
 d3.select('.js-file')
     .on('change', function() {
@@ -255,245 +323,7 @@ function detectType(f) {
     }
 }
 
-},{"d3":2,"geocode-many":3,"d3-metatable":4,"filesaver.js":5,"geojson":6}],4:[function(require,module,exports){
-if (typeof module !== 'undefined') {
-    module.exports = function(d3) {
-        return metatable;
-    };
-}
-
-function metatable(options) {
-    var event = d3.dispatch('change', 'rowfocus', 'renameprompt', 'deleteprompt', 'preventprompt');
-    var _renamePrompt, _deletePrompt;
-
-    var config = {
-        newCol: options.newCol || true,
-        renameCol: options.renameCol || true,
-        deleteCol: options.deleteCol || true
-    };
-
-    function table(selection) {
-        selection.each(function(d) {
-            var sel = d3.select(this),
-                table;
-
-            var keyset = d3.set();
-            d.map(Object.keys).forEach(function(k) {
-                k.forEach(function(_) {
-                    keyset.add(_);
-                });
-            });
-
-            bootstrap();
-            paint();
-
-            event.preventprompt = function(which) {
-                switch(which) {
-                    case 'rename':
-                        _renamePrompt = true;
-                    break;
-                    case 'delete':
-                        _deletePrompt = true;
-                    break;
-                }
-            };
-
-            function bootstrap() {
-
-                var controls = sel.selectAll('.controls')
-                    .data([d])
-                    .enter()
-                    .append('div');
-
-                if (!config.newCol) {
-                    var colbutton = controls.append('a')
-                        .text('New column')
-                        .attr('href', '#')
-                        .attr('class', 'button icon plus')
-                        .on('click', function() {
-                            d3.event.preventDefault();
-                            var name = prompt('column name');
-                            if (name) {
-                                keyset.add(name);
-                                paint();
-                            }
-                        });
-                }
-
-                var enter = sel.selectAll('table').data([d]).enter().append('table');
-                var thead = enter.append('thead');
-                var tbody = enter.append('tbody');
-                var tr = thead.append('tr');
-
-                table = sel.select('table');
-            }
-
-            function paint() {
-
-                var keys = keyset.values();
-
-                var th = table
-                    .select('thead')
-                    .select('tr')
-                    .selectAll('th')
-                    .data(keys, function(d) { return d; });
-
-                var thEnter = th.enter()
-                    .append('th')
-                    .text(String);
-
-                var actionLinks = thEnter
-                    .append('div')
-                    .attr('class', 'small');
-
-                if (!config.deleteCol) {
-                    var delbutton = actionLinks
-                        .append('a')
-                        .attr('href', '#')
-                        .attr('class', 'icon trash')
-                        .text('Delete')
-                        .on('click', deleteClick);
-                }
-
-                if (!config.renameCol) {
-                    var renamebutton = actionLinks
-                        .append('a')
-                        .attr('href', '#')
-                        .attr('class', 'icon pencil')
-                        .text('Rename')
-                        .on('click', renameClick);
-                }
-
-                th.exit().remove();
-
-                var tr = table.select('tbody').selectAll('tr')
-                    .data(function(d) { return d; });
-
-                tr.enter().append('tr');
-                tr.exit().remove();
-
-                var td = tr.selectAll('td')
-                    .data(keys, function(d) { return d; });
-
-                td.enter()
-                    .append('td')
-                    .append('input')
-                    .attr('type', 'text')
-                    .attr('field', String);
-
-                td.exit().remove();
-
-                function deleteClick(d) {
-                    d3.event.preventDefault();
-                    var name = d;
-                    event.deleteprompt(d, completeDelete);
-                    if (_deletePrompt || confirm('Delete column ' + name + '?')) {
-                        completeDelete(d);
-                    }
-                }
-
-                function completeDelete(name) {
-                    keyset.remove(name);
-                    tr.selectAll('input')
-                        .data(function(d, i) {
-                            var map = d3.map(d);
-                            map.remove(name);
-                            var reduced = mapToObject(map);
-                            event.change(reduced, i);
-                            return {
-                                data: reduced,
-                                index: i
-                            };
-                        });
-                    paint();
-                }
-
-                function renameClick(d) {
-                    d3.event.preventDefault();
-                    var name = d;
-                    event.renameprompt(d, completeRename);
-
-                    var newname = (_renamePrompt) ?
-                        undefined :
-                        prompt('New name for column ' + name + '?');
-
-                    if (_renamePrompt || newname) {
-                        completeRename(newname, name);
-                    }
-                }
-
-                function completeRename(value, name) {
-                    keyset.add(value);
-                    keyset.remove(name);
-                    tr.selectAll('input')
-                        .data(function(d, i) {
-                            var map = d3.map(d);
-                            map.set(value, map.get(name));
-                            map.remove(name);
-                            var reduced = mapToObject(map);
-                            event.change(reduced, i);
-                            return {
-                                data: reduced,
-                                index: i
-                            };
-                        });
-                    paint();
-                }
-
-                function coerceNum(x) {
-                    var fl = parseFloat(x);
-                    if (fl.toString() === x) return fl;
-                    else return x;
-                }
-
-                function write(d) {
-                    d.data[d3.select(this).attr('field')] = coerceNum(this.value);
-                    event.change(d.data, d.index);
-                }
-
-                function mapToObject(map) {
-                    return map.entries()
-                        .reduce(function(memo, d) {
-                            memo[d.key] = d.value;
-                            return memo;
-                        }, {});
-                }
-
-                tr.selectAll('input')
-                    .data(function(d, i) {
-                        return d3.range(keys.length).map(function() {
-                            return {
-                                data: d,
-                                index: i
-                            };
-                        });
-                    })
-                    .classed('disabled', function(d) {
-                        return d.data[d3.select(this).attr('field')] === undefined;
-                    })
-                    .property('value', function(d) {
-                        var value = d.data[d3.select(this).attr('field')];
-                        return !isNaN(value) ? value : value || '';
-                    })
-                    .on('keyup', write)
-                    .on('change', write)
-                    .on('click', function(d) {
-                        if (d.data[d3.select(this).attr('field')] === undefined) {
-                            d.data[d3.select(this).attr('field')] = '';
-                            paint();
-                        }
-                    })
-                    .on('focus', function(d) {
-                        event.rowfocus(d.data, d.index);
-                    });
-            }
-        });
-    }
-
-    return d3.rebind(table, event, 'on');
-}
-
-},{}],2:[function(require,module,exports){
+},{"d3":2,"geocode-many":3,"d3-metatable":4,"filesaver.js":5,"wookie":6,"geojson":7}],2:[function(require,module,exports){
 !function() {
   var d3 = {
     version: "3.4.6"
@@ -9757,6 +9587,244 @@ function metatable(options) {
     this.d3 = d3;
   }
 }();
+},{}],4:[function(require,module,exports){
+if (typeof module !== 'undefined') {
+    module.exports = function(d3) {
+        return metatable;
+    };
+}
+
+function metatable(options) {
+    var event = d3.dispatch('change', 'rowfocus', 'renameprompt', 'deleteprompt', 'preventprompt');
+    var _renamePrompt, _deletePrompt;
+
+    var config = {
+        newCol: options.newCol || true,
+        renameCol: options.renameCol || true,
+        deleteCol: options.deleteCol || true
+    };
+
+    function table(selection) {
+        selection.each(function(d) {
+            var sel = d3.select(this),
+                table;
+
+            var keyset = d3.set();
+            d.map(Object.keys).forEach(function(k) {
+                k.forEach(function(_) {
+                    keyset.add(_);
+                });
+            });
+
+            bootstrap();
+            paint();
+
+            event.preventprompt = function(which) {
+                switch(which) {
+                    case 'rename':
+                        _renamePrompt = true;
+                    break;
+                    case 'delete':
+                        _deletePrompt = true;
+                    break;
+                }
+            };
+
+            function bootstrap() {
+
+                var controls = sel.selectAll('.controls')
+                    .data([d])
+                    .enter()
+                    .append('div');
+
+                if (!config.newCol) {
+                    var colbutton = controls.append('a')
+                        .text('New column')
+                        .attr('href', '#')
+                        .attr('class', 'button icon plus')
+                        .on('click', function() {
+                            d3.event.preventDefault();
+                            var name = prompt('column name');
+                            if (name) {
+                                keyset.add(name);
+                                paint();
+                            }
+                        });
+                }
+
+                var enter = sel.selectAll('table').data([d]).enter().append('table');
+                var thead = enter.append('thead');
+                var tbody = enter.append('tbody');
+                var tr = thead.append('tr');
+
+                table = sel.select('table');
+            }
+
+            function paint() {
+
+                var keys = keyset.values();
+
+                var th = table
+                    .select('thead')
+                    .select('tr')
+                    .selectAll('th')
+                    .data(keys, function(d) { return d; });
+
+                var thEnter = th.enter()
+                    .append('th')
+                    .text(String);
+
+                var actionLinks = thEnter
+                    .append('div')
+                    .attr('class', 'small');
+
+                if (!config.deleteCol) {
+                    var delbutton = actionLinks
+                        .append('a')
+                        .attr('href', '#')
+                        .attr('class', 'icon trash')
+                        .text('Delete')
+                        .on('click', deleteClick);
+                }
+
+                if (!config.renameCol) {
+                    var renamebutton = actionLinks
+                        .append('a')
+                        .attr('href', '#')
+                        .attr('class', 'icon pencil')
+                        .text('Rename')
+                        .on('click', renameClick);
+                }
+
+                th.exit().remove();
+
+                var tr = table.select('tbody').selectAll('tr')
+                    .data(function(d) { return d; });
+
+                tr.enter().append('tr');
+                tr.exit().remove();
+
+                var td = tr.selectAll('td')
+                    .data(keys, function(d) { return d; });
+
+                td.enter()
+                    .append('td')
+                    .append('input')
+                    .attr('type', 'text')
+                    .attr('field', String);
+
+                td.exit().remove();
+
+                function deleteClick(d) {
+                    d3.event.preventDefault();
+                    var name = d;
+                    event.deleteprompt(d, completeDelete);
+                    if (_deletePrompt || confirm('Delete column ' + name + '?')) {
+                        completeDelete(d);
+                    }
+                }
+
+                function completeDelete(name) {
+                    keyset.remove(name);
+                    tr.selectAll('input')
+                        .data(function(d, i) {
+                            var map = d3.map(d);
+                            map.remove(name);
+                            var reduced = mapToObject(map);
+                            event.change(reduced, i);
+                            return {
+                                data: reduced,
+                                index: i
+                            };
+                        });
+                    paint();
+                }
+
+                function renameClick(d) {
+                    d3.event.preventDefault();
+                    var name = d;
+                    event.renameprompt(d, completeRename);
+
+                    var newname = (_renamePrompt) ?
+                        undefined :
+                        prompt('New name for column ' + name + '?');
+
+                    if (_renamePrompt || newname) {
+                        completeRename(newname, name);
+                    }
+                }
+
+                function completeRename(value, name) {
+                    keyset.add(value);
+                    keyset.remove(name);
+                    tr.selectAll('input')
+                        .data(function(d, i) {
+                            var map = d3.map(d);
+                            map.set(value, map.get(name));
+                            map.remove(name);
+                            var reduced = mapToObject(map);
+                            event.change(reduced, i);
+                            return {
+                                data: reduced,
+                                index: i
+                            };
+                        });
+                    paint();
+                }
+
+                function coerceNum(x) {
+                    var fl = parseFloat(x);
+                    if (fl.toString() === x) return fl;
+                    else return x;
+                }
+
+                function write(d) {
+                    d.data[d3.select(this).attr('field')] = coerceNum(this.value);
+                    event.change(d.data, d.index);
+                }
+
+                function mapToObject(map) {
+                    return map.entries()
+                        .reduce(function(memo, d) {
+                            memo[d.key] = d.value;
+                            return memo;
+                        }, {});
+                }
+
+                tr.selectAll('input')
+                    .data(function(d, i) {
+                        return d3.range(keys.length).map(function() {
+                            return {
+                                data: d,
+                                index: i
+                            };
+                        });
+                    })
+                    .classed('disabled', function(d) {
+                        return d.data[d3.select(this).attr('field')] === undefined;
+                    })
+                    .property('value', function(d) {
+                        var value = d.data[d3.select(this).attr('field')];
+                        return !isNaN(value) ? value : value || '';
+                    })
+                    .on('keyup', write)
+                    .on('change', write)
+                    .on('click', function(d) {
+                        if (d.data[d3.select(this).attr('field')] === undefined) {
+                            d.data[d3.select(this).attr('field')] = '';
+                            paint();
+                        }
+                    })
+                    .on('focus', function(d) {
+                        event.rowfocus(d.data, d.index);
+                    });
+            }
+        });
+    }
+
+    return d3.rebind(table, event, 'on');
+}
+
 },{}],5:[function(require,module,exports){
 (function(){/* FileSaver.js
  * A saveAs() FileSaver implementation.
@@ -9979,6 +10047,78 @@ if (typeof module !== 'undefined') module.exports = saveAs;
 
 })()
 },{}],6:[function(require,module,exports){
+function tryParse(obj) {
+    try {
+        return JSON.parse(obj);
+    } catch (e) {}
+
+    return obj;
+}
+
+function tryStringify(obj) {
+    if (typeof obj !== 'object' || !JSON.stringify) return obj;
+    return JSON.stringify(obj);
+}
+
+var wookie = {};
+
+wookie.set = function(name, value, expires, path, domain) {
+    var pair = escape(name) + '=' + escape(tryStringify(value));
+
+    if (!!expires) {
+        if (expires.constructor === Number) pair += ';max-age=' + expires;
+        else if (expires.constructor === String) pair += ';expires=' + expires;
+        else if (expires.constructor === Date) pair += ';expires=' + expires.toUTCString();
+    }
+
+    pair += ';path=' + ((!!path) ? path : '/');
+    if (!!domain) pair += ';domain=' + domain;
+
+    document.cookie = pair;
+    return this;
+};
+
+wookie.setObject = function(object, expires, path, domain) {
+    for (var key in object) this.set(key, object[key], expires, path, domain);
+    return this;
+};
+
+wookie.get = function(name) {
+    var obj = this.getObject();
+    return obj[name];
+};
+
+wookie.getObject = function() {
+    var pairs = document.cookie.split(/;\s?/i);
+    var object = {};
+    var pair;
+
+    for (var i in pairs) {
+        if (typeof pairs[i] === 'string') {
+            pair = pairs[i].split('=');
+            if (pair.length <= 1) continue;
+            object[unescape(pair[0])] = tryParse(unescape(pair[1]));
+        }
+    }
+
+    return object;
+};
+
+wookie.unset = function(name) {
+    var date = new Date(0);
+    document.cookie = name + '=; expires=' + date.toUTCString();
+    return this;
+};
+
+wookie.clear = function() {
+    var obj = this.getObject();
+    for (var key in obj) this.unset(key);
+    return obj;
+};
+
+if (typeof module !== 'undefined') module.exports = wookie;
+
+},{}],7:[function(require,module,exports){
 (function(GeoJSON) {
   GeoJSON.version = '0.1.5';
 
@@ -10171,7 +10311,7 @@ if (typeof module !== 'undefined') module.exports = saveAs;
   }
 
 }(typeof module == 'object' ? module.exports : window.GeoJSON = {}));
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 (function() {
   var slice = [].slice;
 
@@ -19699,5 +19839,5 @@ function geocodemany(mapid, throttle) {
 });
 ;
 })(window)
-},{"queue-async":7,"d3":2}]},{},[1])
+},{"queue-async":8,"d3":2}]},{},[1])
 ;
