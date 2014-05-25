@@ -52,7 +52,7 @@ d3.select('.js-file')
                     .classed('pad0 col4', true)
                     .html(function(d) {
                         return '<input type="checkbox" id="' + cleanStr(d.label) + '" value="' + d.label + '">' +
-                        '<label class="truncate keyline-all pad1 round" for="' + cleanStr(d.label) + '">' + d.label +
+                        '<label class="keyline-all pad1 round" for="' + cleanStr(d.label) + '">' + d.label +
                         '<em class="block small normal quiet">' + d.val + '</em></label>';
                     })
                     .selectAll('input')
@@ -132,6 +132,7 @@ function progress(e) {
     if (results && results.length && results[0].length) {
         row.latitude = results[0][0].lat;
         row.longitude = results[0][0].lon;
+        row.type = results[0][0].type;
     }
 
     d3.select('table')

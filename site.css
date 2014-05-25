@@ -78,7 +78,21 @@ a.fill-blue:hover   { background-color:#44607A; color:#fff; }
   }
 .table table { border:none; }
 table { table-layout:fixed; }
-th, td { width:120px; }
+th, td {
+  width:120px;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  overflow:hidden;
+  }
+  table.editable tr th:first-child,
+  table.editable tr td:first-child { border-left:none; }
+  table.editable tr th:last-child,
+  table.editable tr td:last-child  { border-right:none; }
+  table.editable tr:last-child td  { border-bottom:none; }
+  table.editable tr th { border-top:none; }
+
+select { cursor:pointer; }
+select:hover { background:rgba(0,0,0,0.05); }
 
 .editable table tr td {
   padding:0;
@@ -90,6 +104,6 @@ th, td { width:120px; }
     border:none;
     margin:0;
     padding:8px;
-    width:120px;
+    width:122px;
     font-size:16px;
     }
