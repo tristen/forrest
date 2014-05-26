@@ -96,9 +96,6 @@ th, td {
   table.editable tr:last-child td  { border-bottom:none; }
   table.editable tr th { border-top:none; }
 
-select { cursor:pointer; }
-select:hover { background:rgba(0,0,0,0.05); }
-
 .editable table tr td {
   padding:0;
   }
@@ -109,7 +106,7 @@ select:hover { background:rgba(0,0,0,0.05); }
     border:none;
     margin:0;
     padding:8px;
-    width:122px;
+    width:100%;
     font-size:16px;
     }
 
