@@ -318,6 +318,15 @@ function done(err, res) {
                 map.invalidateSize();
                 geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
                     markers.setGeoJSON(gj);
+                    markers.eachLayer(function(m) {
+                        var props = m.feature.properties;
+                        var content = '<nav>';
+                        for (var key in props) {
+                            content += '<div><strong>' + key + '</strong>: ' + props[key] + '</div>';
+                        }
+                        content += '</nav>';
+                        m.bindPopup(content);
+                    });
                     map.fitBounds(markers.getBounds());
                 });
             }
