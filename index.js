@@ -92,7 +92,9 @@ function init() {
             d3.event.stopPropagation();
             d3.event.preventDefault();
             cookie.unset('mapid');
-            location.reload();
+            window.setTimeout(function() {
+                location.reload();
+            }, 0);
         });
 }
 

@@ -93,7 +93,9 @@ function init() {
             d3.event.stopPropagation();
             d3.event.preventDefault();
             cookie.unset('mapid');
-            location.reload();
+            window.setTimeout(function() {
+                location.reload();
+            }, 0);
         });
 }
 
@@ -385,7 +387,7 @@ function detectType(f) {
     }
 }
 
-},{"mapbox.js":2,"d3":3,"geocode-many":4,"d3-metatable":5,"filesaver.js":6,"wookie":7,"geojson":8}],3:[function(require,module,exports){
+},{"d3":2,"mapbox.js":3,"geocode-many":4,"d3-metatable":5,"filesaver.js":6,"wookie":7,"geojson":8}],2:[function(require,module,exports){
 !function() {
   var d3 = {
     version: "3.4.6"
@@ -10373,7 +10375,7 @@ if (typeof module !== 'undefined') module.exports = wookie;
   }
 
 }(typeof module == 'object' ? module.exports : window.GeoJSON = {}));
-},{}],2:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 require('./leaflet');
 require('./mapbox');
 
@@ -19908,7 +19910,7 @@ function geocodemany(mapid, throttle) {
 });
 ;
 })(window)
-},{"queue-async":12,"d3":3}],13:[function(require,module,exports){
+},{"queue-async":12,"d3":2}],13:[function(require,module,exports){
 module.exports={
   "author": "Mapbox",
   "name": "mapbox.js",
@@ -19950,69 +19952,6 @@ module.exports={
     "node": "*"
   }
 }
-
-},{}],14:[function(require,module,exports){
-'use strict';
-
-// an implementation of the simplestyle spec for polygon and linestring features
-// https://github.com/mapbox/simplestyle-spec
-var defaults = {
-    stroke: '#555555',
-    'stroke-width': 2,
-    'stroke-opacity': 1,
-    fill: '#555555',
-    'fill-opacity': 0.5
-};
-
-var mapping = [
-    ['stroke', 'color'],
-    ['stroke-width', 'weight'],
-    ['stroke-opacity', 'opacity'],
-    ['fill', 'fillColor'],
-    ['fill-opacity', 'fillOpacity']
-];
-
-function fallback(a, b) {
-    var c = {};
-    for (var k in b) {
-        if (a[k] === undefined) c[k] = b[k];
-        else c[k] = a[k];
-    }
-    return c;
-}
-
-function remap(a) {
-    var d = {};
-    for (var i = 0; i < mapping.length; i++) {
-        d[mapping[i][1]] = a[mapping[i][0]];
-    }
-    return d;
-}
-
-function style(feature) {
-    return remap(fallback(feature.properties || {}, defaults));
-}
-
-module.exports = {
-    style: style,
-    defaults: defaults
-};
-
-},{}],15:[function(require,module,exports){
-'use strict';
-
-module.exports = {
-
-    HTTP_URLS: [
-        'http://a.tiles.mapbox.com/v3/',
-        'http://b.tiles.mapbox.com/v3/'],
-
-    FORCE_HTTPS: false,
-
-    HTTPS_URLS: [
-        'https://a.tiles.mapbox.com/v3/',
-        'https://b.tiles.mapbox.com/v3/']
-};
 
 },{}],11:[function(require,module,exports){
 (function(){/*
@@ -29185,6 +29124,69 @@ L.Map.include({
 
 }(window, document));
 })()
+},{}],14:[function(require,module,exports){
+'use strict';
+
+// an implementation of the simplestyle spec for polygon and linestring features
+// https://github.com/mapbox/simplestyle-spec
+var defaults = {
+    stroke: '#555555',
+    'stroke-width': 2,
+    'stroke-opacity': 1,
+    fill: '#555555',
+    'fill-opacity': 0.5
+};
+
+var mapping = [
+    ['stroke', 'color'],
+    ['stroke-width', 'weight'],
+    ['stroke-opacity', 'opacity'],
+    ['fill', 'fillColor'],
+    ['fill-opacity', 'fillOpacity']
+];
+
+function fallback(a, b) {
+    var c = {};
+    for (var k in b) {
+        if (a[k] === undefined) c[k] = b[k];
+        else c[k] = a[k];
+    }
+    return c;
+}
+
+function remap(a) {
+    var d = {};
+    for (var i = 0; i < mapping.length; i++) {
+        d[mapping[i][1]] = a[mapping[i][0]];
+    }
+    return d;
+}
+
+function style(feature) {
+    return remap(fallback(feature.properties || {}, defaults));
+}
+
+module.exports = {
+    style: style,
+    defaults: defaults
+};
+
+},{}],15:[function(require,module,exports){
+'use strict';
+
+module.exports = {
+
+    HTTP_URLS: [
+        'http://a.tiles.mapbox.com/v3/',
+        'http://b.tiles.mapbox.com/v3/'],
+
+    FORCE_HTTPS: false,
+
+    HTTPS_URLS: [
+        'https://a.tiles.mapbox.com/v3/',
+        'https://b.tiles.mapbox.com/v3/']
+};
+
 },{}],10:[function(require,module,exports){
 'use strict';
 
@@ -30566,7 +30568,7 @@ module.exports.gridLayer = function(_, options) {
     return new GridLayer(_, options);
 };
 
-},{"./util":31,"./url":29,"./grid":32,"./request":33,"./load_tilejson":30}],25:[function(require,module,exports){
+},{"./util":31,"./url":29,"./request":32,"./grid":33,"./load_tilejson":30}],25:[function(require,module,exports){
 'use strict';
 
 var util = require('./util'),
@@ -30682,7 +30684,7 @@ module.exports = function(_) {
     return geocoder;
 };
 
-},{"./util":31,"./url":29,"./request":33}],31:[function(require,module,exports){
+},{"./util":31,"./url":29,"./request":32}],31:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -30728,7 +30730,7 @@ function contains(item, list) {
     return false;
 }
 
-},{}],32:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 'use strict';
 
 function utfDecode(c) {
@@ -33414,7 +33416,7 @@ module.exports.gridControl = function(_, options) {
     return new GridControl(_, options);
 };
 
-},{"./util":31,"mustache":28,"sanitize-caja":27}],29:[function(require,module,exports){
+},{"./util":31,"sanitize-caja":27,"mustache":28}],29:[function(require,module,exports){
 'use strict';
 
 var config = require('./config');
@@ -33564,7 +33566,7 @@ module.exports.featureLayer = function(_, options) {
     return new FeatureLayer(_, options);
 };
 
-},{"./util":31,"./url":29,"./request":33,"./marker":26,"./simplestyle":14,"sanitize-caja":27}],19:[function(require,module,exports){
+},{"./util":31,"./url":29,"./request":32,"./marker":26,"./simplestyle":14,"sanitize-caja":27}],19:[function(require,module,exports){
 'use strict';
 
 var LegendControl = L.Control.extend({
@@ -33633,36 +33635,7 @@ module.exports.legendControl = function(options) {
     return new LegendControl(options);
 };
 
-},{"sanitize-caja":27}],30:[function(require,module,exports){
-'use strict';
-
-var request = require('./request'),
-    url = require('./url'),
-    util = require('./util');
-
-module.exports = {
-    _loadTileJSON: function(_) {
-        if (typeof _ === 'string') {
-            if (_.indexOf('/') == -1) {
-                _ = url.base() + _ + '.json';
-            }
-
-            request(url.secureFlag(_), L.bind(function(err, json) {
-                if (err) {
-                    util.log('could not load TileJSON at ' + _);
-                    this.fire('error', {error: err});
-                } else if (json) {
-                    this._setTileJSON(json);
-                    this.fire('ready');
-                }
-            }, this));
-        } else if (_ && typeof _ === 'object') {
-            this._setTileJSON(_);
-        }
-    }
-};
-
-},{"./request":33,"./url":29,"./util":31}],22:[function(require,module,exports){
+},{"sanitize-caja":27}],22:[function(require,module,exports){
 'use strict';
 
 var InfoControl = L.Control.extend({
@@ -33778,7 +33751,36 @@ module.exports.infoControl = function(options) {
     return new InfoControl(options);
 };
 
-},{"sanitize-caja":27}],26:[function(require,module,exports){
+},{"sanitize-caja":27}],30:[function(require,module,exports){
+'use strict';
+
+var request = require('./request'),
+    url = require('./url'),
+    util = require('./util');
+
+module.exports = {
+    _loadTileJSON: function(_) {
+        if (typeof _ === 'string') {
+            if (_.indexOf('/') == -1) {
+                _ = url.base() + _ + '.json';
+            }
+
+            request(url.secureFlag(_), L.bind(function(err, json) {
+                if (err) {
+                    util.log('could not load TileJSON at ' + _);
+                    this.fire('error', {error: err});
+                } else if (json) {
+                    this._setTileJSON(json);
+                    this.fire('ready');
+                }
+            }, this));
+        } else if (_ && typeof _ === 'object') {
+            this._setTileJSON(_);
+        }
+    }
+};
+
+},{"./request":32,"./url":29,"./util":31}],26:[function(require,module,exports){
 'use strict';
 
 var url = require('./url'),
@@ -33845,7 +33847,7 @@ module.exports = {
     createPopup: createPopup
 };
 
-},{"./url":29,"./util":31,"sanitize-caja":27}],33:[function(require,module,exports){
+},{"./url":29,"./util":31,"sanitize-caja":27}],32:[function(require,module,exports){
 'use strict';
 
 var corslite = require('corslite'),
