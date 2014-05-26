@@ -125,8 +125,10 @@ select:hover { background:rgba(0,0,0,0.05); }
 
 .sprite.tooltip { text-indent:0; }
 
-.tooltip {
-  position:relative;
+.tooltip-bottomright {
+  position:fixed;
+  bottom:0;
+  left:0;
   }
 .tooltip span {
   position:absolute;
@@ -134,13 +136,14 @@ select:hover { background:rgba(0,0,0,0.05); }
   display:none;
   border-radius:3px;
   width:120px;
+  text-indent:0;
   }
   .tooltip span:after {
     content:'';
     display:block;
     position:absolute;
     }
-  .tooltip:hover span {
+  .tooltip a:hover span {
     display:block;
     }
   .tooltip span:hover {

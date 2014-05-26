@@ -7,6 +7,7 @@ var saveAs = require('filesaver.js');
 var cookie = require('wookie');
 
 var mapid;
+var fileName = 'data';
 var set = d3.set([]);
 var data = [];
 var exportOptions = [{
@@ -83,10 +84,10 @@ function init() {
 
     d3.select('body')
         .append('div')
-        .classed('pin-bottom pad0x', true)
+        .classed('pin-bottom tooltip tooltip-bottomright pad0x', true)
         .append('a')
         .attr('href', '#')
-        .classed('sprite sprocket tooltip tooltip-bottomright', true)
+        .classed('sprite sprocket contain', true)
         .html('<span class="round small keyline-all pad1">Clear stored Map ID?</span>')
         .on('click', function() {
             d3.event.stopPropagation();
@@ -102,6 +103,10 @@ d3.select('.js-file')
         d3.event.preventDefault();
         var files = d3.event.target.files;
         if (files.length && detectType(files[0]) === 'dsv') {
+
+            filename = files[0].name.split('.');
+            fileName = filename.slice(0, filename.length - 1).join('.');
+
             readFile(files[0], function(err, res) {
                 if (err) return h1(message);
                 data = d3.csv.parse(res);
@@ -257,9 +262,10 @@ function done(err, res) {
         .classed('margin3 col6', true)
         .on('change', function() {
             if (this.value) {
+                var exportName = (this.value === 'csv') ? fileName + '-geocoded' : fileName;
                 saveAs(new Blob([exportData(this.value)], {
                     type: 'text/plain;charset=utf-8'
-                }), 'data.' + this.value);
+                }), exportName + '.' + this.value);
             }
         });
 
