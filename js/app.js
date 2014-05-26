@@ -51,7 +51,7 @@ if (!cookie.get('mapid')) {
             if (val.length) {
                 d3.json('http://a.tiles.mapbox.com/v3/' + val + '.json', function(error, json) {
                     if (error) {
-                        h1('Unknown Map ID. <a href="/">Try again?</a>.');
+                        h1('Unknown Map ID. <a href="/forrest/">Try again?</a>.');
                     } else {
                         cookie.set('mapid', val);
                         init();
@@ -205,7 +205,7 @@ d3.select('.js-file')
                     });
             });
         } else {
-            h1('Unsupported format. <a href="/">Try again?</a>.');
+            h1('Unsupported format. <a href="/forrest/">Try again?</a>.');
         }
     });
 
@@ -374,7 +374,7 @@ function detectType(f) {
     }
 }
 
-},{"d3":2,"mapbox.js":3,"geocode-many":4,"d3-metatable":5,"filesaver.js":6,"wookie":7,"geojson":8}],2:[function(require,module,exports){
+},{"geocode-many":2,"d3":3,"mapbox.js":4,"d3-metatable":5,"filesaver.js":6,"wookie":7,"geojson":8}],3:[function(require,module,exports){
 !function() {
   var d3 = {
     version: "3.4.6"
@@ -10362,14 +10362,11 @@ if (typeof module !== 'undefined') module.exports = wookie;
   }
 
 }(typeof module == 'object' ? module.exports : window.GeoJSON = {}));
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 require('./leaflet');
 require('./mapbox');
 
-},{"./leaflet":9,"./mapbox":10}],9:[function(require,module,exports){
-window.L = require('leaflet/dist/leaflet-src');
-
-},{"leaflet/dist/leaflet-src":11}],12:[function(require,module,exports){
+},{"./leaflet":9,"./mapbox":10}],11:[function(require,module,exports){
 (function() {
   var slice = [].slice;
 
@@ -10451,7 +10448,10 @@ window.L = require('leaflet/dist/leaflet-src');
   else this.queue = queue;
 })();
 
-},{}],4:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
+window.L = require('leaflet/dist/leaflet-src');
+
+},{"leaflet/dist/leaflet-src":12}],2:[function(require,module,exports){
 (function(global){!function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.geocodemany=e():"undefined"!=typeof global?global.geocodemany=e():"undefined"!=typeof self&&(self.geocodemany=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 var d3 = require('d3');
 var queue = require('queue-async');
@@ -19897,7 +19897,7 @@ function geocodemany(mapid, throttle) {
 });
 ;
 })(window)
-},{"queue-async":12,"d3":2}],13:[function(require,module,exports){
+},{"queue-async":11,"d3":3}],13:[function(require,module,exports){
 module.exports={
   "author": "Mapbox",
   "name": "mapbox.js",
@@ -19940,70 +19940,7 @@ module.exports={
   }
 }
 
-},{}],14:[function(require,module,exports){
-'use strict';
-
-// an implementation of the simplestyle spec for polygon and linestring features
-// https://github.com/mapbox/simplestyle-spec
-var defaults = {
-    stroke: '#555555',
-    'stroke-width': 2,
-    'stroke-opacity': 1,
-    fill: '#555555',
-    'fill-opacity': 0.5
-};
-
-var mapping = [
-    ['stroke', 'color'],
-    ['stroke-width', 'weight'],
-    ['stroke-opacity', 'opacity'],
-    ['fill', 'fillColor'],
-    ['fill-opacity', 'fillOpacity']
-];
-
-function fallback(a, b) {
-    var c = {};
-    for (var k in b) {
-        if (a[k] === undefined) c[k] = b[k];
-        else c[k] = a[k];
-    }
-    return c;
-}
-
-function remap(a) {
-    var d = {};
-    for (var i = 0; i < mapping.length; i++) {
-        d[mapping[i][1]] = a[mapping[i][0]];
-    }
-    return d;
-}
-
-function style(feature) {
-    return remap(fallback(feature.properties || {}, defaults));
-}
-
-module.exports = {
-    style: style,
-    defaults: defaults
-};
-
-},{}],15:[function(require,module,exports){
-'use strict';
-
-module.exports = {
-
-    HTTP_URLS: [
-        'http://a.tiles.mapbox.com/v3/',
-        'http://b.tiles.mapbox.com/v3/'],
-
-    FORCE_HTTPS: false,
-
-    HTTPS_URLS: [
-        'https://a.tiles.mapbox.com/v3/',
-        'https://b.tiles.mapbox.com/v3/']
-};
-
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 (function(){/*
  Leaflet, a JavaScript library for mobile-friendly interactive maps. http://leafletjs.com
  (c) 2010-2013, Vladimir Agafonkin
@@ -29174,6 +29111,69 @@ L.Map.include({
 
 }(window, document));
 })()
+},{}],14:[function(require,module,exports){
+'use strict';
+
+// an implementation of the simplestyle spec for polygon and linestring features
+// https://github.com/mapbox/simplestyle-spec
+var defaults = {
+    stroke: '#555555',
+    'stroke-width': 2,
+    'stroke-opacity': 1,
+    fill: '#555555',
+    'fill-opacity': 0.5
+};
+
+var mapping = [
+    ['stroke', 'color'],
+    ['stroke-width', 'weight'],
+    ['stroke-opacity', 'opacity'],
+    ['fill', 'fillColor'],
+    ['fill-opacity', 'fillOpacity']
+];
+
+function fallback(a, b) {
+    var c = {};
+    for (var k in b) {
+        if (a[k] === undefined) c[k] = b[k];
+        else c[k] = a[k];
+    }
+    return c;
+}
+
+function remap(a) {
+    var d = {};
+    for (var i = 0; i < mapping.length; i++) {
+        d[mapping[i][1]] = a[mapping[i][0]];
+    }
+    return d;
+}
+
+function style(feature) {
+    return remap(fallback(feature.properties || {}, defaults));
+}
+
+module.exports = {
+    style: style,
+    defaults: defaults
+};
+
+},{}],15:[function(require,module,exports){
+'use strict';
+
+module.exports = {
+
+    HTTP_URLS: [
+        'http://a.tiles.mapbox.com/v3/',
+        'http://b.tiles.mapbox.com/v3/'],
+
+    FORCE_HTTPS: false,
+
+    HTTPS_URLS: [
+        'https://a.tiles.mapbox.com/v3/',
+        'https://b.tiles.mapbox.com/v3/']
+};
+
 },{}],10:[function(require,module,exports){
 'use strict';
 
@@ -33403,7 +33403,7 @@ module.exports.gridControl = function(_, options) {
     return new GridControl(_, options);
 };
 
-},{"./util":31,"mustache":28,"sanitize-caja":27}],29:[function(require,module,exports){
+},{"./util":31,"sanitize-caja":27,"mustache":28}],29:[function(require,module,exports){
 'use strict';
 
 var config = require('./config');

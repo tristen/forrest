@@ -50,7 +50,7 @@ if (!cookie.get('mapid')) {
             if (val.length) {
                 d3.json('http://a.tiles.mapbox.com/v3/' + val + '.json', function(error, json) {
                     if (error) {
-                        h1('Unknown Map ID. <a href="/">Try again?</a>.');
+                        h1('Unknown Map ID. <a href="/forrest/">Try again?</a>.');
                     } else {
                         cookie.set('mapid', val);
                         init();
@@ -204,7 +204,7 @@ d3.select('.js-file')
                     });
             });
         } else {
-            h1('Unsupported format. <a href="/">Try again?</a>.');
+            h1('Unsupported format. <a href="/forrest/">Try again?</a>.');
         }
     });
 
