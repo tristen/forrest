@@ -42,7 +42,6 @@ if (!cookie.get('mapid')) {
             var val;
             d3.event.stopPropagation();
             d3.event.preventDefault();
-
             d3.select('input[type=text]').html(function() {
                 val = this.value;
             });
@@ -144,63 +143,66 @@ d3.select('.js-file')
                     .on('click', function() {
                         d3.event.stopPropagation();
                         d3.event.preventDefault();
-                        var queries = [];
-                        data.forEach(function(d) {
-                            var query = [];
-                            for (var k in d) if (set.has(k)) query.push(d[k]);
-                            queries.push({
-                                name: query.join(', ')
-                            });
-                        });
 
-                        h1('Geocoding ...');
-                        sub('');
-                        output.html('');
-
-                        var p = d3.select('.js-output')
-                            .append('div')
-                            .classed('progress round-top fill-darken pad0 contain', true);
-
-                            p.append('div')
-                                .classed('fill fill-blue pin-left', true);
-
-                        displayData.push({
-                                label: 'Latitude'
-                            }, {
-                                label: 'Longitude'
+                        if (set.values().length) {
+                            var queries = [];
+                            data.forEach(function(d) {
+                                var query = [];
+                                for (var k in d) if (set.has(k)) query.push(d[k]);
+                                queries.push({
+                                    name: query.join(', ')
+                                });
                             });
 
-                        // Map and table views
-                        var views = d3.select('.js-output')
-                            .append('div')
-                            .classed('clip views', true);
+                            h1('Geocoding ...');
+                            sub('');
+                            output.html('');
 
-                        var table = views
-                            .append('table')
-                            .classed('prose active col12 table', true);
+                            var p = d3.select('.js-output')
+                                .append('div')
+                                .classed('progress round-top fill-darken pad0 contain', true);
 
-                        table.append('thead')
-                            .append('tr')
-                            .selectAll('th')
-                            .data(displayData)
-                            .enter()
-                            .append('th')
-                            .text(function(d) {
-                                return d.label;
-                            });
+                                p.append('div')
+                                    .classed('fill fill-blue pin-left', true);
 
-                        table.append('tbody');
-                        var geocoder = geocode(mapid, 0);
-                        geocoder(queries, transform, progress, done);
+                            displayData.push({
+                                    label: 'Latitude'
+                                }, {
+                                    label: 'Longitude'
+                                });
 
-                        views
-                            .append('div')
-                            .attr('id', 'map')
-                            .classed('map row10 col12', true);
+                            // Map and table views
+                            var views = d3.select('.js-output')
+                                .append('div')
+                                .classed('clip views', true);
 
-                        // Initialize a map here.
-                        map = L.mapbox.map('map', mapid);
-                        markers = L.mapbox.featureLayer().addTo(map);
+                            var table = views
+                                .append('table')
+                                .classed('prose active col12 table', true);
+
+                            table.append('thead')
+                                .append('tr')
+                                .selectAll('th')
+                                .data(displayData)
+                                .enter()
+                                .append('th')
+                                .text(function(d) {
+                                    return d.label;
+                                });
+
+                            table.append('tbody');
+                            var geocoder = geocode(mapid, 0);
+                            geocoder(queries, transform, progress, done);
+
+                            views
+                                .append('div')
+                                .attr('id', 'map')
+                                .classed('map row10 col12', true);
+
+                            // Initialize a map here.
+                            map = L.mapbox.map('map', mapid);
+                            markers = L.mapbox.featureLayer().addTo(map);
+                        }
                     });
             });
         } else {
