@@ -13,7 +13,7 @@ clean:
 	rm js/app.js js/app.min.js
 
 js/app.js: index.js 
-	$(BROWSERIFY) index.js > js/app.js
+	$(BROWSERIFY) index.js -o js/app.js
 
 js/app.min.js: js/app.js
 	$(UGLIFY) js/app.js > js/app.min.js

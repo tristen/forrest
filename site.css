@@ -21,6 +21,7 @@ a {
   }
   a:hover { color:#44607A; }
 
+select { cursor:pointer; }
 input[type=checkbox] { display:none; }
 label {
 -webkit-user-select:none;
@@ -31,6 +32,7 @@ label:hover {
   cursor:pointer;
   border-color:#5D85AA;
   }
+  .toggle a.active,
   input[type=checkbox]:checked + label {
     background:#5D85AA;
     color:#fff;
@@ -78,11 +80,12 @@ a.fill-blue:hover   { background-color:#44607A; color:#fff; }
           transition:width 200ms;
 }
 
-.table {
+table {
+  width:100%;
+  table-layout:fixed;
   overflow-x:auto;
+  border:none;
   }
-.table table { border:none; }
-table { table-layout:fixed; }
 th, td {
   width:120px;
   text-overflow:ellipsis;
@@ -168,3 +171,13 @@ th, td {
       top:5px;
       right:-5px;
       }
+
+.map { background-color:#f8f8f8; }
+.views > *        { display:none; }
+.views > *.active { display:block; }
+
+.toggle { position:relative; top:20px; }
+.toggle a.active { user-select:none; }
+.toggle a:first-child { border-radius:3px 0 0 3px; border-right-width:0; }
+.toggle a:hover { border-color:#5D85AA; }
+.toggle a:last-child { border-radius:0 3px 3px 0; }

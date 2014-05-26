@@ -1,12 +1,12 @@
 d3 = require('d3');
-// require('mapbox.js');
+require('mapbox.js');
 var geocode = require('geocode-many');
 var geojson = require('geojson');
 var metatable = require('d3-metatable')(d3);
 var saveAs = require('filesaver.js');
 var cookie = require('wookie');
 
-var mapid;
+var mapid, map, markers;
 var fileName = 'data';
 var set = d3.set([]);
 var data = [];
@@ -170,13 +170,14 @@ d3.select('.js-file')
                                 label: 'Longitude'
                             });
 
-                        d3.select('.js-output')
+                        // Map and table views
+                        var views = d3.select('.js-output')
                             .append('div')
-                            .classed('clip table keyline-all', true);
+                            .classed('clip views', true);
 
-                        var table = d3.select('.table')
+                        var table = views
                             .append('table')
-                            .classed('prose', true);
+                            .classed('prose active col12 table', true);
 
                         table.append('thead')
                             .append('tr')
@@ -191,6 +192,15 @@ d3.select('.js-file')
                         table.append('tbody');
                         var geocoder = geocode(mapid, 0);
                         geocoder(queries, transform, progress, done);
+
+                        views
+                            .append('div')
+                            .attr('id', 'map')
+                            .classed('map row10 col12', true);
+
+                        // Initialize a map here.
+                        map = L.mapbox.map('map', mapid);
+                        markers = L.mapbox.featureLayer().addTo(map);
                     });
             });
         } else {
@@ -239,7 +249,6 @@ function done(err, res) {
             deleteCol: false,
             renameCol: false
         }).on('change', function(d, i) {
-            console.log(d);
             data[i] = d;
         }));
 
@@ -254,11 +263,11 @@ function done(err, res) {
     d3.select('.progress')
         .classed('done', true);
 
-    d3.select('.js-output')
+    var exportOps = d3.select('.js-output')
         .insert('div', '.progress')
-        .classed('col12 space-bottom2 clearfix export contain z10', true);
+        .classed('col12 clearfix contain z10', true);
 
-    var options = d3.select('.export').append('select')
+    var options = exportOps.append('select')
         .classed('margin3 col6', true)
         .on('change', function() {
             if (this.value) {
@@ -275,6 +284,42 @@ function done(err, res) {
         .append('option')
         .text(function(d) { return d.name; })
         .attr('value', function(d) { return d.value; });
+
+    // Toggle controls to view table/map.
+    var toggle = exportOps.append('div')
+        .classed('js-toggle toggle col2 margin5 pad1y inline center', true)
+        .selectAll('a')
+        .data(['Table', 'Map'])
+        .enter()
+        .append('a')
+        .attr('class', function(t) {
+            var names = 'keyline-all pad1x pad0y col6 small';
+            if (t === 'Table') names += ' active';
+            return names;
+        })
+        .attr('href', '#')
+        .text(function(t) { return t; })
+        .on('click', function() {
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+
+            // Active toggling of the switch
+            d3.selectAll('.toggle a').classed('active', false);
+            d3.select(this).classed('active', true);
+
+            // Active toggling of the containers
+            var view = this.innerText.toLowerCase();
+            d3.select('.views .active').classed('active', false);
+            d3.select('.' + view).classed('active', true);
+
+            if (view === 'map') {
+                map.invalidateSize();
+                geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
+                    markers.setGeoJSON(gj);
+                    map.fitBounds(markers.getBounds());
+                });
+            }
+        });
 }
 
 function exportData(method) {
