@@ -86,8 +86,8 @@ function init() {
         .classed('pin-bottom tooltip tooltip-bottomright pad0x', true)
         .append('a')
         .attr('href', '#')
-        .classed('sprite sprocket contain', true)
-        .html('<span class="round small keyline-all pad1">Clear stored Map ID?</span>')
+        .classed('sprite sprocket contain round', true)
+        .html('<span class="round small keyline-all pad1 strong">Clear stored Map ID?</span>')
         .on('click', function() {
             d3.event.stopPropagation();
             d3.event.preventDefault();
@@ -127,7 +127,7 @@ d3.select('.js-file')
                     .html(function(d) {
                         return '<input type="checkbox" id="' + cleanStr(d.label) + '" value="' + d.label + '">' +
                         '<label class="keyline-all pad1 round" for="' + cleanStr(d.label) + '">' + d.label +
-                        '<em class="block small normal quiet">' + d.val + '</em></label>';
+                        '<span class="block small normal quiet">' + d.val + '</em></span>';
                     })
                     .selectAll('input')
                     .on('change', function() {

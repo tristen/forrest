@@ -441,7 +441,7 @@ table.prose th,
 .show-mobile                  { display:none; }
 img.inline, .inline           { display:inline-block; }
 .block                        { display:block; }
-.small                        { font-size:14px; line-height:24px; }
+.small                        { font-size:14px; line-height:22px; }
 .normal                       { font-weight:normal; }
 .round                        { border-radius:4px; }
 .round-top                    { border-radius:4px 4px 0 0; }
