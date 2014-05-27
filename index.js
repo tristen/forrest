@@ -87,7 +87,7 @@ function init() {
         .append('a')
         .attr('href', '#')
         .classed('sprite sprocket contain round', true)
-        .html('<span class="round small keyline-all pad1 strong">Clear stored Map ID?</span>')
+        .html('<span class="round small pad1 strong">Clear stored Map ID?</span>')
         .on('click', function() {
             d3.event.stopPropagation();
             d3.event.preventDefault();
@@ -244,9 +244,10 @@ function transform(obj) {
 }
 
 function done(err, res) {
-    d3.select('table')
-        .classed('editable', true)
-        .html('')
+    d3.select('table').remove();
+    d3.select('.views')
+        .insert('div')
+        .classed('editable prose active col12 table', true)
         .data([data])
         .call(metatable({
             newCol: false,

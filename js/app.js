@@ -1,4 +1,394 @@
 ;(function(e,t,n){function i(n,s){if(!t[n]){if(!e[n]){var o=typeof require=="function"&&require;if(!s&&o)return o(n,!0);if(r)return r(n,!0);throw new Error("Cannot find module '"+n+"'")}var u=t[n]={exports:{}};e[n][0].call(u.exports,function(t){var r=e[n][1][t];return i(r?r:t)},u,u.exports)}return t[n].exports}var r=typeof require=="function"&&require;for(var s=0;s<n.length;s++)i(n[s]);return i})({1:[function(require,module,exports){
+d3 = require('d3');
+require('mapbox.js');
+var geocode = require('geocode-many');
+var geojson = require('geojson');
+var metatable = require('d3-metatable')(d3);
+var saveAs = require('filesaver.js');
+var cookie = require('wookie');
+
+var mapid, map, markers;
+var fileName = 'data';
+var set = d3.set([]);
+var data = [];
+var exportOptions = [{
+    name: 'Choose',
+    value: ''
+}, {
+    name: 'CSV',
+    value: 'csv'
+}, {
+    name: 'GeoJSON',
+    value: 'geojson'
+}];
+
+if (!cookie.get('mapid')) {
+    h1('Enter a Mapbox Map ID');
+    sub('A <a href="https://www.mapbox.com/foundations/glossary/#mapid">Map ID</a> is a unique identifier to a map you have created on <a href="https://mapbox.com">Mapbox.com</a>');
+
+    var form = d3.select('.js-output')
+        .append('div')
+        .classed('col6 margin3 pad2y pill', true);
+
+    form.append('input')
+        .attr('type', 'text')
+        .attr('placeholder', 'username.mapid')
+        .classed('pad1 col8', true);
+
+    form.append('a')
+        .attr('href', '#')
+        .text('submit')
+        .classed('button fill-green pad1 col4', true)
+        .on('click', function() {
+            var val;
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+            d3.select('input[type=text]').html(function() {
+                val = this.value;
+            });
+
+            if (val.length) {
+                d3.json('http://a.tiles.mapbox.com/v3/' + val + '.json', function(error, json) {
+                    if (error) {
+                        h1('Unknown Map ID. <a href="/forrest/">Try again?</a>.');
+                    } else {
+                        cookie.set('mapid', val);
+                        init();
+                    }
+                });
+            }
+        });
+
+} else {
+    init();
+}
+
+function init() {
+    mapid = cookie.get('mapid');
+    h1('Import a comma separated file');
+    sub('Could be a .csv, .tsv, or .dsv file.');
+
+    d3.select('.js-output')
+    .html('')
+    .append('a')
+    .attr('href', '#')
+    .classed('button fill-green round pad2 col6 margin3', true)
+    .text('Add')
+    .on('click', function() {
+        d3.event.stopPropagation();
+        d3.event.preventDefault();
+        event = document.createEvent('HTMLEvents');
+        event.initEvent('click', true, false);
+        document.getElementById('import').dispatchEvent(event);
+    });
+
+    d3.select('body')
+        .append('div')
+        .classed('pin-bottom tooltip tooltip-bottomright pad0x', true)
+        .append('a')
+        .attr('href', '#')
+        .classed('sprite sprocket contain round', true)
+        .html('<span class="round small pad1 strong">Clear stored Map ID?</span>')
+        .on('click', function() {
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+            cookie.unset('mapid');
+            window.setTimeout(function() {
+                location.reload();
+            }, 0);
+        });
+}
+
+d3.select('.js-file')
+    .on('change', function() {
+        d3.event.stopPropagation();
+        d3.event.preventDefault();
+        var files = d3.event.target.files;
+        if (files.length && detectType(files[0]) === 'dsv') {
+
+            filename = files[0].name.split('.');
+            fileName = filename.slice(0, filename.length - 1).join('.');
+
+            readFile(files[0], function(err, res) {
+                if (err) return h1(message);
+                data = d3.csv.parse(res);
+                var displayData = [];
+                for (var k in data[0]) {
+                    displayData.push({ label: k, val: data[0][k] });
+                }
+                h1('Choose fields');
+                sub('Select the columns that contain address information you want to geocode');
+                var output = d3.select('.js-output');
+                    output.html('');
+                    output.selectAll('div')
+                    .data(displayData)
+                    .enter()
+                    .append('div')
+                    .classed('pad0 col4', true)
+                    .html(function(d) {
+                        return '<input type="checkbox" id="' + cleanStr(d.label) + '" value="' + d.label + '">' +
+                        '<label class="keyline-all pad1 round" for="' + cleanStr(d.label) + '">' + d.label +
+                        '<span class="block small normal quiet">' + d.val + '</em></span>';
+                    })
+                    .selectAll('input')
+                    .on('change', function() {
+                        (set.has(this.value)) ?
+                            set.remove(this.value) :
+                            set.add(this.value);
+                    });
+
+                output.append('div')
+                    .classed('pad2y col12 clearfix', true)
+                    .append('a')
+                    .classed('button fill-green col6 margin3 pad2 round', true)
+                    .text('Geocode')
+                    .attr('href', '#')
+                    .on('click', function() {
+                        d3.event.stopPropagation();
+                        d3.event.preventDefault();
+
+                        if (set.values().length) {
+                            var queries = [];
+                            data.forEach(function(d) {
+                                var query = [];
+                                for (var k in d) if (set.has(k)) query.push(d[k]);
+                                queries.push({
+                                    name: query.join(', ')
+                                });
+                            });
+
+                            h1('Geocoding ...');
+                            sub('');
+                            output.html('');
+
+                            var p = d3.select('.js-output')
+                                .append('div')
+                                .classed('progress round-top fill-darken pad0 contain', true);
+
+                                p.append('div')
+                                    .classed('fill fill-blue pin-left', true);
+
+                            displayData.push({
+                                    label: 'Latitude'
+                                }, {
+                                    label: 'Longitude'
+                                });
+
+                            // Map and table views
+                            var views = d3.select('.js-output')
+                                .append('div')
+                                .classed('clip views', true);
+
+                            var table = views
+                                .append('table')
+                                .classed('prose active col12 table', true);
+
+                            table.append('thead')
+                                .append('tr')
+                                .selectAll('th')
+                                .data(displayData)
+                                .enter()
+                                .append('th')
+                                .text(function(d) {
+                                    return d.label;
+                                });
+
+                            table.append('tbody');
+                            var geocoder = geocode(mapid, 0);
+                            geocoder(queries, transform, progress, done);
+
+                            views
+                                .append('div')
+                                .attr('id', 'map')
+                                .classed('map row10 col12', true);
+
+                            // Initialize a map here.
+                            map = L.mapbox.map('map', mapid);
+                            markers = L.mapbox.featureLayer().addTo(map);
+                        }
+                    });
+            });
+        } else {
+            h1('Unsupported format. <a href="/forrest/">Try again?</a>.');
+        }
+    });
+
+function progress(e) {
+    var row = data[e.done - 1];
+    var results = (e.data) ? e.data.results : undefined;
+
+    if (results && results.length && results[0].length) {
+        row.latitude = results[0][0].lat;
+        row.longitude = results[0][0].lon;
+        row.type = results[0][0].type;
+    }
+
+    d3.select('table')
+        .select('tbody')
+        .append('tr')
+        .classed(e.status, true)
+        .selectAll('td')
+        .data(d3.values(row))
+        .enter()
+        .append('td')
+        .text(function(td) {
+            return td;
+        });
+
+    var ratio = 100 / e.todo;
+    var percent = parseInt((e.done * ratio), 10);
+    d3.select('.fill').style('width', percent + '%');
+}
+
+function transform(obj) {
+    return obj.name;
+}
+
+function done(err, res) {
+    d3.select('table').remove();
+    d3.select('.views')
+        .insert('div')
+        .classed('editable prose active col12 table', true)
+        .data([data])
+        .call(metatable({
+            newCol: false,
+            deleteCol: false,
+            renameCol: false
+        }).on('change', function(d, i) {
+            data[i] = d;
+        }));
+
+    if (err.length) {
+        h1('There was a problem geocoding! <a href="/">Try again?</a>.');
+        sub('');
+    }
+
+    h1('Geocoding complete!');
+    sub('Choose an export method');
+
+    d3.select('.progress')
+        .classed('done', true);
+
+    var exportOps = d3.select('.js-output')
+        .insert('div', '.progress')
+        .classed('col12 clearfix contain z10', true);
+
+    var options = exportOps.append('select')
+        .classed('margin3 col6', true)
+        .on('change', function() {
+            if (this.value) {
+                var exportName = (this.value === 'csv') ? fileName + '-geocoded' : fileName;
+                saveAs(new Blob([exportData(this.value)], {
+                    type: 'text/plain;charset=utf-8'
+                }), exportName + '.' + this.value);
+            }
+        });
+
+    options.selectAll('option')
+        .data(exportOptions)
+        .enter()
+        .append('option')
+        .text(function(d) { return d.name; })
+        .attr('value', function(d) { return d.value; });
+
+    // Toggle controls to view table/map.
+    var toggle = exportOps.append('div')
+        .classed('js-toggle toggle col2 margin5 pad1y inline center', true)
+        .selectAll('a')
+        .data(['Table', 'Map'])
+        .enter()
+        .append('a')
+        .attr('class', function(t) {
+            var names = 'keyline-all pad1x pad0y col6 small';
+            if (t === 'Table') names += ' active';
+            return names;
+        })
+        .attr('href', '#')
+        .text(function(t) { return t; })
+        .on('click', function() {
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+
+            // Active toggling of the switch
+            d3.selectAll('.toggle a').classed('active', false);
+            d3.select(this).classed('active', true);
+
+            // Active toggling of the containers
+            var view = this.innerText.toLowerCase();
+            d3.select('.views .active').classed('active', false);
+            d3.select('.' + view).classed('active', true);
+
+            if (view === 'map') {
+                map.invalidateSize();
+                geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
+                    markers.setGeoJSON(gj);
+                    markers.eachLayer(function(m) {
+                        var props = m.feature.properties;
+                        var content = '<nav>';
+                        for (var key in props) {
+                            content += '<div><strong>' + key + '</strong>: ' + props[key] + '</div>';
+                        }
+                        content += '</nav>';
+                        m.bindPopup(content);
+                    });
+                    map.fitBounds(markers.getBounds());
+                });
+            }
+        });
+}
+
+function exportData(method) {
+    var v;
+    if (method === 'geojson') {
+        geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
+            v =  JSON.stringify(gj);
+        });
+    } else if (method === 'csv') {
+        v =  d3.csv.format(data);
+    }
+    return v;
+}
+
+function h1(title) { d3.select('.js-heading').html(title); }
+function sub(subtext) { d3.select('.js-sub').html(subtext); }
+
+function readFile(f, cb) {
+    try {
+        var reader = new FileReader();
+        reader.readAsText(f);
+        reader.onload = function(e) {
+            (e.target && e.target.result) ?
+                cb(null, e.target.result) :
+                cb(readError(f));
+        };
+        reader.onerror = readError(f);
+    } catch(e) {
+        cb(readError(f));
+    }
+}
+
+function cleanStr(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-*$/, '');
+}
+
+function readError(f) {
+    return {
+        message: 'Could not read file. <a href="/">Try again?</a>.'
+    };
+}
+
+function detectType(f) {
+    var filename = f.name ? f.name.toLowerCase() : '';
+    function ext(_) { return filename.indexOf(_) !== -1; }
+    if (f.type === 'text/csv' ||
+        ext('.csv') ||
+        ext('.tsv') ||
+        ext('.dsv')) {
+        return 'dsv';
+    }
+}
+
+},{"d3":2,"mapbox.js":3,"geocode-many":4,"d3-metatable":5,"filesaver.js":6,"wookie":7,"geojson":8}],2:[function(require,module,exports){
 !function() {
   var d3 = {
     version: "3.4.6"
@@ -9262,886 +9652,7 @@
     this.d3 = d3;
   }
 }();
-},{}],2:[function(require,module,exports){
-function tryParse(obj) {
-    try {
-        return JSON.parse(obj);
-    } catch (e) {}
-
-    return obj;
-}
-
-function tryStringify(obj) {
-    if (typeof obj !== 'object' || !JSON.stringify) return obj;
-    return JSON.stringify(obj);
-}
-
-var wookie = {};
-
-wookie.set = function(name, value, expires, path, domain) {
-    var pair = escape(name) + '=' + escape(tryStringify(value));
-
-    if (!!expires) {
-        if (expires.constructor === Number) pair += ';max-age=' + expires;
-        else if (expires.constructor === String) pair += ';expires=' + expires;
-        else if (expires.constructor === Date) pair += ';expires=' + expires.toUTCString();
-    }
-
-    pair += ';path=' + ((!!path) ? path : '/');
-    if (!!domain) pair += ';domain=' + domain;
-
-    document.cookie = pair;
-    return this;
-};
-
-wookie.setObject = function(object, expires, path, domain) {
-    for (var key in object) this.set(key, object[key], expires, path, domain);
-    return this;
-};
-
-wookie.get = function(name) {
-    var obj = this.getObject();
-    return obj[name];
-};
-
-wookie.getObject = function() {
-    var pairs = document.cookie.split(/;\s?/i);
-    var object = {};
-    var pair;
-
-    for (var i in pairs) {
-        if (typeof pairs[i] === 'string') {
-            pair = pairs[i].split('=');
-            if (pair.length <= 1) continue;
-            object[unescape(pair[0])] = tryParse(unescape(pair[1]));
-        }
-    }
-
-    return object;
-};
-
-wookie.unset = function(name) {
-    var date = new Date(0);
-    document.cookie = name + '=; expires=' + date.toUTCString();
-    return this;
-};
-
-wookie.clear = function() {
-    var obj = this.getObject();
-    for (var key in obj) this.unset(key);
-    return obj;
-};
-
-if (typeof module !== 'undefined') module.exports = wookie;
-
-},{}],3:[function(require,module,exports){
-d3 = require('d3');
-require('mapbox.js');
-var geocode = require('geocode-many');
-var geojson = require('geojson');
-var metatable = require('d3-metatable')(d3);
-var saveAs = require('filesaver.js');
-var cookie = require('wookie');
-
-var mapid, map, markers;
-var fileName = 'data';
-var set = d3.set([]);
-var data = [];
-var exportOptions = [{
-    name: 'Choose',
-    value: ''
-}, {
-    name: 'CSV',
-    value: 'csv'
-}, {
-    name: 'GeoJSON',
-    value: 'geojson'
-}];
-
-if (!cookie.get('mapid')) {
-    h1('Enter a Mapbox Map ID');
-    sub('A <a href="https://www.mapbox.com/foundations/glossary/#mapid">Map ID</a> is a unique identifier to a map you have created on <a href="https://mapbox.com">Mapbox.com</a>');
-
-    var form = d3.select('.js-output')
-        .append('div')
-        .classed('col6 margin3 pad2y pill', true);
-
-    form.append('input')
-        .attr('type', 'text')
-        .attr('placeholder', 'username.mapid')
-        .classed('pad1 col8', true);
-
-    form.append('a')
-        .attr('href', '#')
-        .text('submit')
-        .classed('button fill-green pad1 col4', true)
-        .on('click', function() {
-            var val;
-            d3.event.stopPropagation();
-            d3.event.preventDefault();
-            d3.select('input[type=text]').html(function() {
-                val = this.value;
-            });
-
-            if (val.length) {
-                d3.json('http://a.tiles.mapbox.com/v3/' + val + '.json', function(error, json) {
-                    if (error) {
-                        h1('Unknown Map ID. <a href="/forrest/">Try again?</a>.');
-                    } else {
-                        cookie.set('mapid', val);
-                        init();
-                    }
-                });
-            }
-        });
-
-} else {
-    init();
-}
-
-function init() {
-    mapid = cookie.get('mapid');
-    h1('Import a comma separated file');
-    sub('Could be a .csv, .tsv, or .dsv file.');
-
-    d3.select('.js-output')
-    .html('')
-    .append('a')
-    .attr('href', '#')
-    .classed('button fill-green round pad2 col6 margin3', true)
-    .text('Add')
-    .on('click', function() {
-        d3.event.stopPropagation();
-        d3.event.preventDefault();
-        event = document.createEvent('HTMLEvents');
-        event.initEvent('click', true, false);
-        document.getElementById('import').dispatchEvent(event);
-    });
-
-    d3.select('body')
-        .append('div')
-        .classed('pin-bottom tooltip tooltip-bottomright pad0x', true)
-        .append('a')
-        .attr('href', '#')
-        .classed('sprite sprocket contain round', true)
-        .html('<span class="round small keyline-all pad1 strong">Clear stored Map ID?</span>')
-        .on('click', function() {
-            d3.event.stopPropagation();
-            d3.event.preventDefault();
-            cookie.unset('mapid');
-            window.setTimeout(function() {
-                location.reload();
-            }, 0);
-        });
-}
-
-d3.select('.js-file')
-    .on('change', function() {
-        d3.event.stopPropagation();
-        d3.event.preventDefault();
-        var files = d3.event.target.files;
-        if (files.length && detectType(files[0]) === 'dsv') {
-
-            filename = files[0].name.split('.');
-            fileName = filename.slice(0, filename.length - 1).join('.');
-
-            readFile(files[0], function(err, res) {
-                if (err) return h1(message);
-                data = d3.csv.parse(res);
-                var displayData = [];
-                for (var k in data[0]) {
-                    displayData.push({ label: k, val: data[0][k] });
-                }
-                h1('Choose fields');
-                sub('Select the columns that contain address information you want to geocode');
-                var output = d3.select('.js-output');
-                    output.html('');
-                    output.selectAll('div')
-                    .data(displayData)
-                    .enter()
-                    .append('div')
-                    .classed('pad0 col4', true)
-                    .html(function(d) {
-                        return '<input type="checkbox" id="' + cleanStr(d.label) + '" value="' + d.label + '">' +
-                        '<label class="keyline-all pad1 round" for="' + cleanStr(d.label) + '">' + d.label +
-                        '<span class="block small normal quiet">' + d.val + '</em></span>';
-                    })
-                    .selectAll('input')
-                    .on('change', function() {
-                        (set.has(this.value)) ?
-                            set.remove(this.value) :
-                            set.add(this.value);
-                    });
-
-                output.append('div')
-                    .classed('pad2y col12 clearfix', true)
-                    .append('a')
-                    .classed('button fill-green col6 margin3 pad2 round', true)
-                    .text('Geocode')
-                    .attr('href', '#')
-                    .on('click', function() {
-                        d3.event.stopPropagation();
-                        d3.event.preventDefault();
-
-                        if (set.values().length) {
-                            var queries = [];
-                            data.forEach(function(d) {
-                                var query = [];
-                                for (var k in d) if (set.has(k)) query.push(d[k]);
-                                queries.push({
-                                    name: query.join(', ')
-                                });
-                            });
-
-                            h1('Geocoding ...');
-                            sub('');
-                            output.html('');
-
-                            var p = d3.select('.js-output')
-                                .append('div')
-                                .classed('progress round-top fill-darken pad0 contain', true);
-
-                                p.append('div')
-                                    .classed('fill fill-blue pin-left', true);
-
-                            displayData.push({
-                                    label: 'Latitude'
-                                }, {
-                                    label: 'Longitude'
-                                });
-
-                            // Map and table views
-                            var views = d3.select('.js-output')
-                                .append('div')
-                                .classed('clip views', true);
-
-                            var table = views
-                                .append('table')
-                                .classed('prose active col12 table', true);
-
-                            table.append('thead')
-                                .append('tr')
-                                .selectAll('th')
-                                .data(displayData)
-                                .enter()
-                                .append('th')
-                                .text(function(d) {
-                                    return d.label;
-                                });
-
-                            table.append('tbody');
-                            var geocoder = geocode(mapid, 0);
-                            geocoder(queries, transform, progress, done);
-
-                            views
-                                .append('div')
-                                .attr('id', 'map')
-                                .classed('map row10 col12', true);
-
-                            // Initialize a map here.
-                            map = L.mapbox.map('map', mapid);
-                            markers = L.mapbox.featureLayer().addTo(map);
-                        }
-                    });
-            });
-        } else {
-            h1('Unsupported format. <a href="/forrest/">Try again?</a>.');
-        }
-    });
-
-function progress(e) {
-    var row = data[e.done - 1];
-    var results = (e.data) ? e.data.results : undefined;
-
-    if (results && results.length && results[0].length) {
-        row.latitude = results[0][0].lat;
-        row.longitude = results[0][0].lon;
-        row.type = results[0][0].type;
-    }
-
-    d3.select('table')
-        .select('tbody')
-        .append('tr')
-        .classed(e.status, true)
-        .selectAll('td')
-        .data(d3.values(row))
-        .enter()
-        .append('td')
-        .text(function(td) {
-            return td;
-        });
-
-    var ratio = 100 / e.todo;
-    var percent = parseInt((e.done * ratio), 10);
-    d3.select('.fill').style('width', percent + '%');
-}
-
-function transform(obj) {
-    return obj.name;
-}
-
-function done(err, res) {
-    d3.select('table')
-        .classed('editable', true)
-        .html('')
-        .data([data])
-        .call(metatable({
-            newCol: false,
-            deleteCol: false,
-            renameCol: false
-        }).on('change', function(d, i) {
-            data[i] = d;
-        }));
-
-    if (err.length) {
-        h1('There was a problem geocoding! <a href="/">Try again?</a>.');
-        sub('');
-    }
-
-    h1('Geocoding complete!');
-    sub('Choose an export method');
-
-    d3.select('.progress')
-        .classed('done', true);
-
-    var exportOps = d3.select('.js-output')
-        .insert('div', '.progress')
-        .classed('col12 clearfix contain z10', true);
-
-    var options = exportOps.append('select')
-        .classed('margin3 col6', true)
-        .on('change', function() {
-            if (this.value) {
-                var exportName = (this.value === 'csv') ? fileName + '-geocoded' : fileName;
-                saveAs(new Blob([exportData(this.value)], {
-                    type: 'text/plain;charset=utf-8'
-                }), exportName + '.' + this.value);
-            }
-        });
-
-    options.selectAll('option')
-        .data(exportOptions)
-        .enter()
-        .append('option')
-        .text(function(d) { return d.name; })
-        .attr('value', function(d) { return d.value; });
-
-    // Toggle controls to view table/map.
-    var toggle = exportOps.append('div')
-        .classed('js-toggle toggle col2 margin5 pad1y inline center', true)
-        .selectAll('a')
-        .data(['Table', 'Map'])
-        .enter()
-        .append('a')
-        .attr('class', function(t) {
-            var names = 'keyline-all pad1x pad0y col6 small';
-            if (t === 'Table') names += ' active';
-            return names;
-        })
-        .attr('href', '#')
-        .text(function(t) { return t; })
-        .on('click', function() {
-            d3.event.stopPropagation();
-            d3.event.preventDefault();
-
-            // Active toggling of the switch
-            d3.selectAll('.toggle a').classed('active', false);
-            d3.select(this).classed('active', true);
-
-            // Active toggling of the containers
-            var view = this.innerText.toLowerCase();
-            d3.select('.views .active').classed('active', false);
-            d3.select('.' + view).classed('active', true);
-
-            if (view === 'map') {
-                map.invalidateSize();
-                geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
-                    markers.setGeoJSON(gj);
-                    markers.eachLayer(function(m) {
-                        var props = m.feature.properties;
-                        var content = '<nav>';
-                        for (var key in props) {
-                            content += '<div><strong>' + key + '</strong>: ' + props[key] + '</div>';
-                        }
-                        content += '</nav>';
-                        m.bindPopup(content);
-                    });
-                    map.fitBounds(markers.getBounds());
-                });
-            }
-        });
-}
-
-function exportData(method) {
-    var v;
-    if (method === 'geojson') {
-        geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
-            v =  JSON.stringify(gj);
-        });
-    } else if (method === 'csv') {
-        v =  d3.csv.format(data);
-    }
-    return v;
-}
-
-function h1(title) { d3.select('.js-heading').html(title); }
-function sub(subtext) { d3.select('.js-sub').html(subtext); }
-
-function readFile(f, cb) {
-    try {
-        var reader = new FileReader();
-        reader.readAsText(f);
-        reader.onload = function(e) {
-            (e.target && e.target.result) ?
-                cb(null, e.target.result) :
-                cb(readError(f));
-        };
-        reader.onerror = readError(f);
-    } catch(e) {
-        cb(readError(f));
-    }
-}
-
-function cleanStr(s) {
-    return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-*$/, '');
-}
-
-function readError(f) {
-    return {
-        message: 'Could not read file. <a href="/">Try again?</a>.'
-    };
-}
-
-function detectType(f) {
-    var filename = f.name ? f.name.toLowerCase() : '';
-    function ext(_) { return filename.indexOf(_) !== -1; }
-    if (f.type === 'text/csv' ||
-        ext('.csv') ||
-        ext('.tsv') ||
-        ext('.dsv')) {
-        return 'dsv';
-    }
-}
-
-},{"d3":1,"mapbox.js":4,"geocode-many":5,"wookie":2,"filesaver.js":6,"geojson":7,"d3-metatable":8}],4:[function(require,module,exports){
-require('./leaflet');
-require('./mapbox');
-
-},{"./leaflet":9,"./mapbox":10}],6:[function(require,module,exports){
-(function(){/* FileSaver.js
- * A saveAs() FileSaver implementation.
- * 2013-01-23
- *
- * By Eli Grey, http://eligrey.com
- * License: X11/MIT
- *   See LICENSE.md
- */
-
-/*global self */
-/*jslint bitwise: true, regexp: true, confusion: true, es5: true, vars: true, white: true,
-  plusplus: true */
-
-/*! @source http://purl.eligrey.com/github/FileSaver.js/blob/master/FileSaver.js */
-
-var saveAs = saveAs
-  || (navigator.msSaveOrOpenBlob && navigator.msSaveOrOpenBlob.bind(navigator))
-  || (function(view) {
-	"use strict";
-	var
-		  doc = view.document
-		  // only get URL when necessary in case BlobBuilder.js hasn't overridden it yet
-		, get_URL = function() {
-			return view.URL || view.webkitURL || view;
-		}
-		, URL = view.URL || view.webkitURL || view
-		, save_link = doc.createElementNS("http://www.w3.org/1999/xhtml", "a")
-		, can_use_save_link =  !view.externalHost && "download" in save_link
-		, click = function(node) {
-			var event = doc.createEvent("MouseEvents");
-			event.initMouseEvent(
-				"click", true, false, view, 0, 0, 0, 0, 0
-				, false, false, false, false, 0, null
-			);
-			node.dispatchEvent(event);
-		}
-		, webkit_req_fs = view.webkitRequestFileSystem
-		, req_fs = view.requestFileSystem || webkit_req_fs || view.mozRequestFileSystem
-		, throw_outside = function (ex) {
-			(view.setImmediate || view.setTimeout)(function() {
-				throw ex;
-			}, 0);
-		}
-		, force_saveable_type = "application/octet-stream"
-		, fs_min_size = 0
-		, deletion_queue = []
-		, process_deletion_queue = function() {
-			var i = deletion_queue.length;
-			while (i--) {
-				var file = deletion_queue[i];
-				if (typeof file === "string") { // file is an object URL
-					URL.revokeObjectURL(file);
-				} else { // file is a File
-					file.remove();
-				}
-			}
-			deletion_queue.length = 0; // clear queue
-		}
-		, dispatch = function(filesaver, event_types, event) {
-			event_types = [].concat(event_types);
-			var i = event_types.length;
-			while (i--) {
-				var listener = filesaver["on" + event_types[i]];
-				if (typeof listener === "function") {
-					try {
-						listener.call(filesaver, event || filesaver);
-					} catch (ex) {
-						throw_outside(ex);
-					}
-				}
-			}
-		}
-		, FileSaver = function(blob, name) {
-			// First try a.download, then web filesystem, then object URLs
-			var
-				  filesaver = this
-				, type = blob.type
-				, blob_changed = false
-				, object_url
-				, target_view
-				, get_object_url = function() {
-					var object_url = get_URL().createObjectURL(blob);
-					deletion_queue.push(object_url);
-					return object_url;
-				}
-				, dispatch_all = function() {
-					dispatch(filesaver, "writestart progress write writeend".split(" "));
-				}
-				// on any filesys errors revert to saving with object URLs
-				, fs_error = function() {
-					// don't create more object URLs than needed
-					if (blob_changed || !object_url) {
-						object_url = get_object_url(blob);
-					}
-					if (target_view) {
-						target_view.location.href = object_url;
-					} else {
-                        window.open(object_url, "_blank");
-                    }
-					filesaver.readyState = filesaver.DONE;
-					dispatch_all();
-				}
-				, abortable = function(func) {
-					return function() {
-						if (filesaver.readyState !== filesaver.DONE) {
-							return func.apply(this, arguments);
-						}
-					};
-				}
-				, create_if_not_found = {create: true, exclusive: false}
-				, slice
-			;
-			filesaver.readyState = filesaver.INIT;
-			if (!name) {
-				name = "download";
-			}
-			if (can_use_save_link) {
-				object_url = get_object_url(blob);
-				save_link.href = object_url;
-				save_link.download = name;
-				click(save_link);
-				filesaver.readyState = filesaver.DONE;
-				dispatch_all();
-				return;
-			}
-			// Object and web filesystem URLs have a problem saving in Google Chrome when
-			// viewed in a tab, so I force save with application/octet-stream
-			// http://code.google.com/p/chromium/issues/detail?id=91158
-			if (view.chrome && type && type !== force_saveable_type) {
-				slice = blob.slice || blob.webkitSlice;
-				blob = slice.call(blob, 0, blob.size, force_saveable_type);
-				blob_changed = true;
-			}
-			// Since I can't be sure that the guessed media type will trigger a download
-			// in WebKit, I append .download to the filename.
-			// https://bugs.webkit.org/show_bug.cgi?id=65440
-			if (webkit_req_fs && name !== "download") {
-				name += ".download";
-			}
-			if (type === force_saveable_type || webkit_req_fs) {
-				target_view = view;
-			}
-			if (!req_fs) {
-				fs_error();
-				return;
-			}
-			fs_min_size += blob.size;
-			req_fs(view.TEMPORARY, fs_min_size, abortable(function(fs) {
-				fs.root.getDirectory("saved", create_if_not_found, abortable(function(dir) {
-					var save = function() {
-						dir.getFile(name, create_if_not_found, abortable(function(file) {
-							file.createWriter(abortable(function(writer) {
-								writer.onwriteend = function(event) {
-									target_view.location.href = file.toURL();
-									deletion_queue.push(file);
-									filesaver.readyState = filesaver.DONE;
-									dispatch(filesaver, "writeend", event);
-								};
-								writer.onerror = function() {
-									var error = writer.error;
-									if (error.code !== error.ABORT_ERR) {
-										fs_error();
-									}
-								};
-								"writestart progress write abort".split(" ").forEach(function(event) {
-									writer["on" + event] = filesaver["on" + event];
-								});
-								writer.write(blob);
-								filesaver.abort = function() {
-									writer.abort();
-									filesaver.readyState = filesaver.DONE;
-								};
-								filesaver.readyState = filesaver.WRITING;
-							}), fs_error);
-						}), fs_error);
-					};
-					dir.getFile(name, {create: false}, abortable(function(file) {
-						// delete file if it already exists
-						file.remove();
-						save();
-					}), abortable(function(ex) {
-						if (ex.code === ex.NOT_FOUND_ERR) {
-							save();
-						} else {
-							fs_error();
-						}
-					}));
-				}), fs_error);
-			}), fs_error);
-		}
-		, FS_proto = FileSaver.prototype
-		, saveAs = function(blob, name) {
-			return new FileSaver(blob, name);
-		}
-	;
-	FS_proto.abort = function() {
-		var filesaver = this;
-		filesaver.readyState = filesaver.DONE;
-		dispatch(filesaver, "abort");
-	};
-	FS_proto.readyState = FS_proto.INIT = 0;
-	FS_proto.WRITING = 1;
-	FS_proto.DONE = 2;
-
-	FS_proto.error =
-	FS_proto.onwritestart =
-	FS_proto.onprogress =
-	FS_proto.onwrite =
-	FS_proto.onabort =
-	FS_proto.onerror =
-	FS_proto.onwriteend =
-		null;
-
-	view.addEventListener("unload", process_deletion_queue, false);
-	return saveAs;
-}(self));
-
-if (typeof module !== 'undefined') module.exports = saveAs;
-
-})()
-},{}],7:[function(require,module,exports){
-(function(GeoJSON) {
-  GeoJSON.version = '0.1.5';
-
-  // Allow user to specify default parameters
-  GeoJSON.defaults = {};
-
-  // The one and only public function.
-  // Converts an array of objects into a GeoJSON feature collection
-  GeoJSON.parse = function(objects, params, callback) {
-    if(objects.length === 0) { throw new Error('No data found'); }
-
-    var geojson = {"type": "FeatureCollection", "features": []},
-        settings = applyDefaults(params, this.defaults),
-        propFunc;
-
-    geomAttrs.length = 0; // Reset the list of geometry fields
-    setGeom(settings);
-    propFunc = getPropFunction(settings);
-    
-    objects.forEach(function(item){
-      geojson.features.push(getFeature(item, settings, propFunc));
-    });
-
-    addOptionals(geojson, settings);
-
-    if (callback && typeof callback === 'function') {
-      callback(geojson);
-    } else {
-      return geojson;
-    }
-  };
-
-  // Helper functions
-  var geoms = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'],
-      geomAttrs = [];
-
-  // Adds default settings to user-specified params
-  // Does not overwrite any settings--only adds defaults
-  // the the user did not specify
-  function applyDefaults(params, defaults) {
-    var settings = params || {};
-
-    for(var setting in defaults) {
-      if(defaults.hasOwnProperty(setting) && !settings[setting]) {
-        settings[setting] = defaults[setting];
-      }
-    }
-
-    return settings;
-  }
-
-  // Adds the optional GeoJSON properties crs and bbox
-  // if they have been specified
-  function addOptionals(geojson, settings){
-    if(settings.crs) {
-      geojson.crs = {
-        type: "name",
-        properties: {
-          name: settings.crs
-        }
-      };
-    }
-    if (settings.bbox) {
-      geojson.bbox = settings.bbox;
-    }
-    if (settings.extraGlobal) {
-      geojson.properties = {};
-      for (var key in settings.extraGlobal) {
-        geojson.properties[key] = settings.extraGlobal[key];
-      }
-    }
-  }
-
-  // Moves the user-specified geometry parameters
-  // under the `geom` key in param for easier access
-  function setGeom(params) {
-    params.geom = {};
-
-    for(var param in params) {
-      if(params.hasOwnProperty(param) && geoms.indexOf(param) !== -1){
-        params.geom[param] = params[param];
-        delete params[param];
-      }
-    }
-
-    setGeomAttrList(params.geom);
-  }
-
-  // Adds fields which contain geometry data
-  // to geomAttrs. This list is used when adding
-  // properties to the features so that no geometry
-  // fields are added the properties key
-  function setGeomAttrList(params) {
-    for(var param in params) {
-      if(params.hasOwnProperty(param)) {
-        if(typeof params[param] === 'string') {
-          geomAttrs.push(params[param]);
-        } else if (typeof params[param] === 'object') { // Array of coordinates for Point
-          geomAttrs.push(params[param][0]);
-          geomAttrs.push(params[param][1]);
-        }
-      }
-    }
-
-    if(geomAttrs.length === 0) { throw new Error('No geometry attributes specified'); }
-  }
-
-  // Creates a feature object to be added
-  // to the GeoJSON features array
-  function getFeature(item, params, propFunc) {
-    var feature = { "type": "Feature" };
-
-    feature.geometry = buildGeom(item, params);
-    feature.properties = propFunc.call(item);
-
-    return feature;
-  }
-
-  // Assembles the `geometry` property
-  // for the feature output
-  function buildGeom(item, params) {
-    var geom = {},
-        attr;
-
-    for(var gtype in params.geom) {
-      attr = (typeof params.geom[gtype] === 'object') ? params.geom[gtype][0] : params.geom[gtype];
-      if(params.geom.hasOwnProperty(gtype) && item[attr]) {
-        geom.type = gtype;
-
-        if(typeof params.geom[gtype] === 'string') {
-          geom.coordinates = item[params.geom[gtype]];
-        } else {
-          geom.coordinates = [item[params.geom[gtype][1]], item[params.geom[gtype][0]]];
-        }
-      }
-    }
-
-    return geom;
-  }
-
-  // Returns the function to be used to
-  // build the properties object for each feature
-  function getPropFunction(params) {
-    var func;
-
-    if(!params.exclude && !params.include) {
-      func = function(properties) {
-        for(var attr in this) {
-          if(this.hasOwnProperty(attr) && (geomAttrs.indexOf(attr) === -1)) {
-            properties[attr] = this[attr];
-          }
-        }
-      };
-    } else if(params.include) {
-      func = function(properties) {
-        params.include.forEach(function(attr){
-          properties[attr] = this[attr];
-        }, this);
-      };
-    } else if(params.exclude) {
-      func = function(properties) {
-        for(var attr in this) {
-          if(this.hasOwnProperty(attr) && (geomAttrs.indexOf(attr) === -1) && (params.exclude.indexOf(attr) === -1)) {
-            properties[attr] = this[attr];
-          }
-        }
-      };
-    }
-
-    return function() {
-      var properties = {};
-
-      func.call(this, properties);
-
-      if(params.extra) { addExtra(properties, params.extra); }
-      return properties;
-    };
-  }
-
-  // Adds data contained in the `extra`
-  // parameter if it has been specified
-  function addExtra(properties, extra) {
-    for(var key in extra){
-      if(extra.hasOwnProperty(key)) {
-        properties[key] = extra[key];
-      }
-    }
-
-    return properties;
-  }
-
-}(typeof module == 'object' ? module.exports : window.GeoJSON = {}));
-},{}],8:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 if (typeof module !== 'undefined') {
     module.exports = function(d3) {
         return metatable;
@@ -10379,7 +9890,582 @@ function metatable(options) {
     return d3.rebind(table, event, 'on');
 }
 
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
+(function(){/* FileSaver.js
+ * A saveAs() FileSaver implementation.
+ * 2013-01-23
+ *
+ * By Eli Grey, http://eligrey.com
+ * License: X11/MIT
+ *   See LICENSE.md
+ */
+
+/*global self */
+/*jslint bitwise: true, regexp: true, confusion: true, es5: true, vars: true, white: true,
+  plusplus: true */
+
+/*! @source http://purl.eligrey.com/github/FileSaver.js/blob/master/FileSaver.js */
+
+var saveAs = saveAs
+  || (navigator.msSaveOrOpenBlob && navigator.msSaveOrOpenBlob.bind(navigator))
+  || (function(view) {
+	"use strict";
+	var
+		  doc = view.document
+		  // only get URL when necessary in case BlobBuilder.js hasn't overridden it yet
+		, get_URL = function() {
+			return view.URL || view.webkitURL || view;
+		}
+		, URL = view.URL || view.webkitURL || view
+		, save_link = doc.createElementNS("http://www.w3.org/1999/xhtml", "a")
+		, can_use_save_link =  !view.externalHost && "download" in save_link
+		, click = function(node) {
+			var event = doc.createEvent("MouseEvents");
+			event.initMouseEvent(
+				"click", true, false, view, 0, 0, 0, 0, 0
+				, false, false, false, false, 0, null
+			);
+			node.dispatchEvent(event);
+		}
+		, webkit_req_fs = view.webkitRequestFileSystem
+		, req_fs = view.requestFileSystem || webkit_req_fs || view.mozRequestFileSystem
+		, throw_outside = function (ex) {
+			(view.setImmediate || view.setTimeout)(function() {
+				throw ex;
+			}, 0);
+		}
+		, force_saveable_type = "application/octet-stream"
+		, fs_min_size = 0
+		, deletion_queue = []
+		, process_deletion_queue = function() {
+			var i = deletion_queue.length;
+			while (i--) {
+				var file = deletion_queue[i];
+				if (typeof file === "string") { // file is an object URL
+					URL.revokeObjectURL(file);
+				} else { // file is a File
+					file.remove();
+				}
+			}
+			deletion_queue.length = 0; // clear queue
+		}
+		, dispatch = function(filesaver, event_types, event) {
+			event_types = [].concat(event_types);
+			var i = event_types.length;
+			while (i--) {
+				var listener = filesaver["on" + event_types[i]];
+				if (typeof listener === "function") {
+					try {
+						listener.call(filesaver, event || filesaver);
+					} catch (ex) {
+						throw_outside(ex);
+					}
+				}
+			}
+		}
+		, FileSaver = function(blob, name) {
+			// First try a.download, then web filesystem, then object URLs
+			var
+				  filesaver = this
+				, type = blob.type
+				, blob_changed = false
+				, object_url
+				, target_view
+				, get_object_url = function() {
+					var object_url = get_URL().createObjectURL(blob);
+					deletion_queue.push(object_url);
+					return object_url;
+				}
+				, dispatch_all = function() {
+					dispatch(filesaver, "writestart progress write writeend".split(" "));
+				}
+				// on any filesys errors revert to saving with object URLs
+				, fs_error = function() {
+					// don't create more object URLs than needed
+					if (blob_changed || !object_url) {
+						object_url = get_object_url(blob);
+					}
+					if (target_view) {
+						target_view.location.href = object_url;
+					} else {
+                        window.open(object_url, "_blank");
+                    }
+					filesaver.readyState = filesaver.DONE;
+					dispatch_all();
+				}
+				, abortable = function(func) {
+					return function() {
+						if (filesaver.readyState !== filesaver.DONE) {
+							return func.apply(this, arguments);
+						}
+					};
+				}
+				, create_if_not_found = {create: true, exclusive: false}
+				, slice
+			;
+			filesaver.readyState = filesaver.INIT;
+			if (!name) {
+				name = "download";
+			}
+			if (can_use_save_link) {
+				object_url = get_object_url(blob);
+				save_link.href = object_url;
+				save_link.download = name;
+				click(save_link);
+				filesaver.readyState = filesaver.DONE;
+				dispatch_all();
+				return;
+			}
+			// Object and web filesystem URLs have a problem saving in Google Chrome when
+			// viewed in a tab, so I force save with application/octet-stream
+			// http://code.google.com/p/chromium/issues/detail?id=91158
+			if (view.chrome && type && type !== force_saveable_type) {
+				slice = blob.slice || blob.webkitSlice;
+				blob = slice.call(blob, 0, blob.size, force_saveable_type);
+				blob_changed = true;
+			}
+			// Since I can't be sure that the guessed media type will trigger a download
+			// in WebKit, I append .download to the filename.
+			// https://bugs.webkit.org/show_bug.cgi?id=65440
+			if (webkit_req_fs && name !== "download") {
+				name += ".download";
+			}
+			if (type === force_saveable_type || webkit_req_fs) {
+				target_view = view;
+			}
+			if (!req_fs) {
+				fs_error();
+				return;
+			}
+			fs_min_size += blob.size;
+			req_fs(view.TEMPORARY, fs_min_size, abortable(function(fs) {
+				fs.root.getDirectory("saved", create_if_not_found, abortable(function(dir) {
+					var save = function() {
+						dir.getFile(name, create_if_not_found, abortable(function(file) {
+							file.createWriter(abortable(function(writer) {
+								writer.onwriteend = function(event) {
+									target_view.location.href = file.toURL();
+									deletion_queue.push(file);
+									filesaver.readyState = filesaver.DONE;
+									dispatch(filesaver, "writeend", event);
+								};
+								writer.onerror = function() {
+									var error = writer.error;
+									if (error.code !== error.ABORT_ERR) {
+										fs_error();
+									}
+								};
+								"writestart progress write abort".split(" ").forEach(function(event) {
+									writer["on" + event] = filesaver["on" + event];
+								});
+								writer.write(blob);
+								filesaver.abort = function() {
+									writer.abort();
+									filesaver.readyState = filesaver.DONE;
+								};
+								filesaver.readyState = filesaver.WRITING;
+							}), fs_error);
+						}), fs_error);
+					};
+					dir.getFile(name, {create: false}, abortable(function(file) {
+						// delete file if it already exists
+						file.remove();
+						save();
+					}), abortable(function(ex) {
+						if (ex.code === ex.NOT_FOUND_ERR) {
+							save();
+						} else {
+							fs_error();
+						}
+					}));
+				}), fs_error);
+			}), fs_error);
+		}
+		, FS_proto = FileSaver.prototype
+		, saveAs = function(blob, name) {
+			return new FileSaver(blob, name);
+		}
+	;
+	FS_proto.abort = function() {
+		var filesaver = this;
+		filesaver.readyState = filesaver.DONE;
+		dispatch(filesaver, "abort");
+	};
+	FS_proto.readyState = FS_proto.INIT = 0;
+	FS_proto.WRITING = 1;
+	FS_proto.DONE = 2;
+
+	FS_proto.error =
+	FS_proto.onwritestart =
+	FS_proto.onprogress =
+	FS_proto.onwrite =
+	FS_proto.onabort =
+	FS_proto.onerror =
+	FS_proto.onwriteend =
+		null;
+
+	view.addEventListener("unload", process_deletion_queue, false);
+	return saveAs;
+}(self));
+
+if (typeof module !== 'undefined') module.exports = saveAs;
+
+})()
+},{}],7:[function(require,module,exports){
+function tryParse(obj) {
+    try {
+        return JSON.parse(obj);
+    } catch (e) {}
+
+    return obj;
+}
+
+function tryStringify(obj) {
+    if (typeof obj !== 'object' || !JSON.stringify) return obj;
+    return JSON.stringify(obj);
+}
+
+var wookie = {};
+
+wookie.set = function(name, value, expires, path, domain) {
+    var pair = escape(name) + '=' + escape(tryStringify(value));
+
+    if (!!expires) {
+        if (expires.constructor === Number) pair += ';max-age=' + expires;
+        else if (expires.constructor === String) pair += ';expires=' + expires;
+        else if (expires.constructor === Date) pair += ';expires=' + expires.toUTCString();
+    }
+
+    pair += ';path=' + ((!!path) ? path : '/');
+    if (!!domain) pair += ';domain=' + domain;
+
+    document.cookie = pair;
+    return this;
+};
+
+wookie.setObject = function(object, expires, path, domain) {
+    for (var key in object) this.set(key, object[key], expires, path, domain);
+    return this;
+};
+
+wookie.get = function(name) {
+    var obj = this.getObject();
+    return obj[name];
+};
+
+wookie.getObject = function() {
+    var pairs = document.cookie.split(/;\s?/i);
+    var object = {};
+    var pair;
+
+    for (var i in pairs) {
+        if (typeof pairs[i] === 'string') {
+            pair = pairs[i].split('=');
+            if (pair.length <= 1) continue;
+            object[unescape(pair[0])] = tryParse(unescape(pair[1]));
+        }
+    }
+
+    return object;
+};
+
+wookie.unset = function(name) {
+    var date = new Date(0);
+    document.cookie = name + '=; expires=' + date.toUTCString();
+    return this;
+};
+
+wookie.clear = function() {
+    var obj = this.getObject();
+    for (var key in obj) this.unset(key);
+    return obj;
+};
+
+if (typeof module !== 'undefined') module.exports = wookie;
+
+},{}],8:[function(require,module,exports){
+(function(GeoJSON) {
+  GeoJSON.version = '0.1.5';
+
+  // Allow user to specify default parameters
+  GeoJSON.defaults = {};
+
+  // The one and only public function.
+  // Converts an array of objects into a GeoJSON feature collection
+  GeoJSON.parse = function(objects, params, callback) {
+    if(objects.length === 0) { throw new Error('No data found'); }
+
+    var geojson = {"type": "FeatureCollection", "features": []},
+        settings = applyDefaults(params, this.defaults),
+        propFunc;
+
+    geomAttrs.length = 0; // Reset the list of geometry fields
+    setGeom(settings);
+    propFunc = getPropFunction(settings);
+    
+    objects.forEach(function(item){
+      geojson.features.push(getFeature(item, settings, propFunc));
+    });
+
+    addOptionals(geojson, settings);
+
+    if (callback && typeof callback === 'function') {
+      callback(geojson);
+    } else {
+      return geojson;
+    }
+  };
+
+  // Helper functions
+  var geoms = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'],
+      geomAttrs = [];
+
+  // Adds default settings to user-specified params
+  // Does not overwrite any settings--only adds defaults
+  // the the user did not specify
+  function applyDefaults(params, defaults) {
+    var settings = params || {};
+
+    for(var setting in defaults) {
+      if(defaults.hasOwnProperty(setting) && !settings[setting]) {
+        settings[setting] = defaults[setting];
+      }
+    }
+
+    return settings;
+  }
+
+  // Adds the optional GeoJSON properties crs and bbox
+  // if they have been specified
+  function addOptionals(geojson, settings){
+    if(settings.crs) {
+      geojson.crs = {
+        type: "name",
+        properties: {
+          name: settings.crs
+        }
+      };
+    }
+    if (settings.bbox) {
+      geojson.bbox = settings.bbox;
+    }
+    if (settings.extraGlobal) {
+      geojson.properties = {};
+      for (var key in settings.extraGlobal) {
+        geojson.properties[key] = settings.extraGlobal[key];
+      }
+    }
+  }
+
+  // Moves the user-specified geometry parameters
+  // under the `geom` key in param for easier access
+  function setGeom(params) {
+    params.geom = {};
+
+    for(var param in params) {
+      if(params.hasOwnProperty(param) && geoms.indexOf(param) !== -1){
+        params.geom[param] = params[param];
+        delete params[param];
+      }
+    }
+
+    setGeomAttrList(params.geom);
+  }
+
+  // Adds fields which contain geometry data
+  // to geomAttrs. This list is used when adding
+  // properties to the features so that no geometry
+  // fields are added the properties key
+  function setGeomAttrList(params) {
+    for(var param in params) {
+      if(params.hasOwnProperty(param)) {
+        if(typeof params[param] === 'string') {
+          geomAttrs.push(params[param]);
+        } else if (typeof params[param] === 'object') { // Array of coordinates for Point
+          geomAttrs.push(params[param][0]);
+          geomAttrs.push(params[param][1]);
+        }
+      }
+    }
+
+    if(geomAttrs.length === 0) { throw new Error('No geometry attributes specified'); }
+  }
+
+  // Creates a feature object to be added
+  // to the GeoJSON features array
+  function getFeature(item, params, propFunc) {
+    var feature = { "type": "Feature" };
+
+    feature.geometry = buildGeom(item, params);
+    feature.properties = propFunc.call(item);
+
+    return feature;
+  }
+
+  // Assembles the `geometry` property
+  // for the feature output
+  function buildGeom(item, params) {
+    var geom = {},
+        attr;
+
+    for(var gtype in params.geom) {
+      attr = (typeof params.geom[gtype] === 'object') ? params.geom[gtype][0] : params.geom[gtype];
+      if(params.geom.hasOwnProperty(gtype) && item[attr]) {
+        geom.type = gtype;
+
+        if(typeof params.geom[gtype] === 'string') {
+          geom.coordinates = item[params.geom[gtype]];
+        } else {
+          geom.coordinates = [item[params.geom[gtype][1]], item[params.geom[gtype][0]]];
+        }
+      }
+    }
+
+    return geom;
+  }
+
+  // Returns the function to be used to
+  // build the properties object for each feature
+  function getPropFunction(params) {
+    var func;
+
+    if(!params.exclude && !params.include) {
+      func = function(properties) {
+        for(var attr in this) {
+          if(this.hasOwnProperty(attr) && (geomAttrs.indexOf(attr) === -1)) {
+            properties[attr] = this[attr];
+          }
+        }
+      };
+    } else if(params.include) {
+      func = function(properties) {
+        params.include.forEach(function(attr){
+          properties[attr] = this[attr];
+        }, this);
+      };
+    } else if(params.exclude) {
+      func = function(properties) {
+        for(var attr in this) {
+          if(this.hasOwnProperty(attr) && (geomAttrs.indexOf(attr) === -1) && (params.exclude.indexOf(attr) === -1)) {
+            properties[attr] = this[attr];
+          }
+        }
+      };
+    }
+
+    return function() {
+      var properties = {};
+
+      func.call(this, properties);
+
+      if(params.extra) { addExtra(properties, params.extra); }
+      return properties;
+    };
+  }
+
+  // Adds data contained in the `extra`
+  // parameter if it has been specified
+  function addExtra(properties, extra) {
+    for(var key in extra){
+      if(extra.hasOwnProperty(key)) {
+        properties[key] = extra[key];
+      }
+    }
+
+    return properties;
+  }
+
+}(typeof module == 'object' ? module.exports : window.GeoJSON = {}));
+},{}],3:[function(require,module,exports){
+require('./leaflet');
+require('./mapbox');
+
+},{"./leaflet":9,"./mapbox":10}],9:[function(require,module,exports){
+window.L = require('leaflet/dist/leaflet-src');
+
+},{"leaflet/dist/leaflet-src":11}],12:[function(require,module,exports){
+(function() {
+  var slice = [].slice;
+
+  function queue(parallelism) {
+    var q,
+        tasks = [],
+        started = 0, // number of tasks that have been started (and perhaps finished)
+        active = 0, // number of tasks currently being executed (started but not finished)
+        remaining = 0, // number of tasks not yet finished
+        popping, // inside a synchronous task callback?
+        error = null,
+        await = noop,
+        all;
+
+    if (!parallelism) parallelism = Infinity;
+
+    function pop() {
+      while (popping = started < tasks.length && active < parallelism) {
+        var i = started++,
+            t = tasks[i],
+            a = slice.call(t, 1);
+        a.push(callback(i));
+        ++active;
+        t[0].apply(null, a);
+      }
+    }
+
+    function callback(i) {
+      return function(e, r) {
+        --active;
+        if (error != null) return;
+        if (e != null) {
+          error = e; // ignore new tasks and squelch active callbacks
+          started = remaining = NaN; // stop queued tasks from starting
+          notify();
+        } else {
+          tasks[i] = r;
+          if (--remaining) popping || pop();
+          else notify();
+        }
+      };
+    }
+
+    function notify() {
+      if (error != null) await(error);
+      else if (all) await(error, tasks);
+      else await.apply(null, [error].concat(tasks));
+    }
+
+    return q = {
+      defer: function() {
+        if (!error) {
+          tasks.push(arguments);
+          ++remaining;
+          pop();
+        }
+        return q;
+      },
+      await: function(f) {
+        await = f;
+        all = false;
+        if (!remaining) notify();
+        return q;
+      },
+      awaitAll: function(f) {
+        await = f;
+        all = true;
+        if (!remaining) notify();
+        return q;
+      }
+    };
+  }
+
+  function noop() {}
+
+  queue.version = "1.0.7";
+  if (typeof define === "function" && define.amd) define(function() { return queue; });
+  else if (typeof module === "object" && module.exports) module.exports = queue;
+  else this.queue = queue;
+})();
+
+},{}],4:[function(require,module,exports){
 (function(global){!function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.geocodemany=e():"undefined"!=typeof global?global.geocodemany=e():"undefined"!=typeof self&&(self.geocodemany=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 var d3 = require('d3');
 var queue = require('queue-async');
@@ -19825,92 +19911,7 @@ function geocodemany(mapid, throttle) {
 });
 ;
 })(window)
-},{"queue-async":11,"d3":1}],11:[function(require,module,exports){
-(function() {
-  var slice = [].slice;
-
-  function queue(parallelism) {
-    var q,
-        tasks = [],
-        started = 0, // number of tasks that have been started (and perhaps finished)
-        active = 0, // number of tasks currently being executed (started but not finished)
-        remaining = 0, // number of tasks not yet finished
-        popping, // inside a synchronous task callback?
-        error = null,
-        await = noop,
-        all;
-
-    if (!parallelism) parallelism = Infinity;
-
-    function pop() {
-      while (popping = started < tasks.length && active < parallelism) {
-        var i = started++,
-            t = tasks[i],
-            a = slice.call(t, 1);
-        a.push(callback(i));
-        ++active;
-        t[0].apply(null, a);
-      }
-    }
-
-    function callback(i) {
-      return function(e, r) {
-        --active;
-        if (error != null) return;
-        if (e != null) {
-          error = e; // ignore new tasks and squelch active callbacks
-          started = remaining = NaN; // stop queued tasks from starting
-          notify();
-        } else {
-          tasks[i] = r;
-          if (--remaining) popping || pop();
-          else notify();
-        }
-      };
-    }
-
-    function notify() {
-      if (error != null) await(error);
-      else if (all) await(error, tasks);
-      else await.apply(null, [error].concat(tasks));
-    }
-
-    return q = {
-      defer: function() {
-        if (!error) {
-          tasks.push(arguments);
-          ++remaining;
-          pop();
-        }
-        return q;
-      },
-      await: function(f) {
-        await = f;
-        all = false;
-        if (!remaining) notify();
-        return q;
-      },
-      awaitAll: function(f) {
-        await = f;
-        all = true;
-        if (!remaining) notify();
-        return q;
-      }
-    };
-  }
-
-  function noop() {}
-
-  queue.version = "1.0.7";
-  if (typeof define === "function" && define.amd) define(function() { return queue; });
-  else if (typeof module === "object" && module.exports) module.exports = queue;
-  else this.queue = queue;
-})();
-
-},{}],9:[function(require,module,exports){
-window.L = require('leaflet/dist/leaflet-src');
-
-},{"leaflet/dist/leaflet-src":12}],13:[function(require,module,exports){
+},{"queue-async":12,"d3":2}],13:[function(require,module,exports){
 module.exports={
   "author": "Mapbox",
   "name": "mapbox.js",
@@ -19953,1233 +19954,7 @@ module.exports={
   }
 }
 
-},{}],14:[function(require,module,exports){
-'use strict';
-
-// an implementation of the simplestyle spec for polygon and linestring features
-// https://github.com/mapbox/simplestyle-spec
-var defaults = {
-    stroke: '#555555',
-    'stroke-width': 2,
-    'stroke-opacity': 1,
-    fill: '#555555',
-    'fill-opacity': 0.5
-};
-
-var mapping = [
-    ['stroke', 'color'],
-    ['stroke-width', 'weight'],
-    ['stroke-opacity', 'opacity'],
-    ['fill', 'fillColor'],
-    ['fill-opacity', 'fillOpacity']
-];
-
-function fallback(a, b) {
-    var c = {};
-    for (var k in b) {
-        if (a[k] === undefined) c[k] = b[k];
-        else c[k] = a[k];
-    }
-    return c;
-}
-
-function remap(a) {
-    var d = {};
-    for (var i = 0; i < mapping.length; i++) {
-        d[mapping[i][1]] = a[mapping[i][0]];
-    }
-    return d;
-}
-
-function style(feature) {
-    return remap(fallback(feature.properties || {}, defaults));
-}
-
-module.exports = {
-    style: style,
-    defaults: defaults
-};
-
-},{}],15:[function(require,module,exports){
-'use strict';
-
-module.exports = {
-
-    HTTP_URLS: [
-        'http://a.tiles.mapbox.com/v3/',
-        'http://b.tiles.mapbox.com/v3/'],
-
-    FORCE_HTTPS: false,
-
-    HTTPS_URLS: [
-        'https://a.tiles.mapbox.com/v3/',
-        'https://b.tiles.mapbox.com/v3/']
-};
-
-},{}],10:[function(require,module,exports){
-'use strict';
-
-// Hardcode image path, because Leaflet's autodetection
-// fails, because mapbox.js is not named leaflet.js
-window.L.Icon.Default.imagePath = '//api.tiles.mapbox.com/mapbox.js/' + 'v' +
-    require('./package.json').version + '/images';
-
-var geocoderControl = require('./src/geocoder_control'),
-    gridControl = require('./src/grid_control'),
-    featureLayer = require('./src/feature_layer'),
-    legendControl = require('./src/legend_control'),
-    shareControl = require('./src/share_control'),
-    tileLayer = require('./src/tile_layer'),
-    infoControl = require('./src/info_control'),
-    map = require('./src/map'),
-    gridLayer = require('./src/grid_layer');
-
-L.mapbox = module.exports = {
-    VERSION: require('./package.json').version,
-    geocoder: require('./src/geocoder'),
-    marker: require('./src/marker'),
-    simplestyle: require('./src/simplestyle'),
-    tileLayer: tileLayer.tileLayer,
-    TileLayer: tileLayer.TileLayer,
-    infoControl: infoControl.infoControl,
-    InfoControl: infoControl.InfoControl,
-    shareControl: shareControl.shareControl,
-    ShareControl: shareControl.ShareControl,
-    legendControl: legendControl.legendControl,
-    LegendControl: legendControl.LegendControl,
-    geocoderControl: geocoderControl.geocoderControl,
-    GeocoderControl: geocoderControl.GeocoderControl,
-    gridControl: gridControl.gridControl,
-    GridControl: gridControl.GridControl,
-    gridLayer: gridLayer.gridLayer,
-    GridLayer: gridLayer.GridLayer,
-    featureLayer: featureLayer.featureLayer,
-    FeatureLayer: featureLayer.FeatureLayer,
-    map: map.map,
-    Map: map.Map,
-    config: require('./src/config'),
-    sanitize: require('sanitize-caja'),
-    template: require('mustache').to_html
-};
-
-L.mapbox.markerLayer = L.mapbox.featureLayer;
-
-},{"./package.json":13,"./src/geocoder_control":16,"./src/grid_control":17,"./src/feature_layer":18,"./src/legend_control":19,"./src/share_control":20,"./src/tile_layer":21,"./src/info_control":22,"./src/map":23,"./src/grid_layer":24,"./src/geocoder":25,"./src/marker":26,"./src/simplestyle":14,"./src/config":15,"sanitize-caja":27,"mustache":28}],28:[function(require,module,exports){
-(function(){/*!
- * mustache.js - Logic-less {{mustache}} templates with JavaScript
- * http://github.com/janl/mustache.js
- */
-
-/*global define: false*/
-
-(function (root, factory) {
-  if (typeof exports === "object" && exports) {
-    factory(exports); // CommonJS
-  } else {
-    var mustache = {};
-    factory(mustache);
-    if (typeof define === "function" && define.amd) {
-      define(mustache); // AMD
-    } else {
-      root.Mustache = mustache; // <script>
-    }
-  }
-}(this, function (mustache) {
-
-  var whiteRe = /\s*/;
-  var spaceRe = /\s+/;
-  var nonSpaceRe = /\S/;
-  var eqRe = /\s*=/;
-  var curlyRe = /\s*\}/;
-  var tagRe = /#|\^|\/|>|\{|&|=|!/;
-
-  // Workaround for https://issues.apache.org/jira/browse/COUCHDB-577
-  // See https://github.com/janl/mustache.js/issues/189
-  var RegExp_test = RegExp.prototype.test;
-  function testRegExp(re, string) {
-    return RegExp_test.call(re, string);
-  }
-
-  function isWhitespace(string) {
-    return !testRegExp(nonSpaceRe, string);
-  }
-
-  var Object_toString = Object.prototype.toString;
-  var isArray = Array.isArray || function (object) {
-    return Object_toString.call(object) === '[object Array]';
-  };
-
-  function isFunction(object) {
-    return typeof object === 'function';
-  }
-
-  function escapeRegExp(string) {
-    return string.replace(/[\-\[\]{}()*+?.,\\\^$|#\s]/g, "\\$&");
-  }
-
-  var entityMap = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': '&quot;',
-    "'": '&#39;',
-    "/": '&#x2F;'
-  };
-
-  function escapeHtml(string) {
-    return String(string).replace(/[&<>"'\/]/g, function (s) {
-      return entityMap[s];
-    });
-  }
-
-  function Scanner(string) {
-    this.string = string;
-    this.tail = string;
-    this.pos = 0;
-  }
-
-  /**
-   * Returns `true` if the tail is empty (end of string).
-   */
-  Scanner.prototype.eos = function () {
-    return this.tail === "";
-  };
-
-  /**
-   * Tries to match the given regular expression at the current position.
-   * Returns the matched text if it can match, the empty string otherwise.
-   */
-  Scanner.prototype.scan = function (re) {
-    var match = this.tail.match(re);
-
-    if (match && match.index === 0) {
-      var string = match[0];
-      this.tail = this.tail.substring(string.length);
-      this.pos += string.length;
-      return string;
-    }
-
-    return "";
-  };
-
-  /**
-   * Skips all text until the given regular expression can be matched. Returns
-   * the skipped string, which is the entire tail if no match can be made.
-   */
-  Scanner.prototype.scanUntil = function (re) {
-    var index = this.tail.search(re), match;
-
-    switch (index) {
-    case -1:
-      match = this.tail;
-      this.tail = "";
-      break;
-    case 0:
-      match = "";
-      break;
-    default:
-      match = this.tail.substring(0, index);
-      this.tail = this.tail.substring(index);
-    }
-
-    this.pos += match.length;
-
-    return match;
-  };
-
-  function Context(view, parent) {
-    this.view = view == null ? {} : view;
-    this.parent = parent;
-    this._cache = { '.': this.view };
-  }
-
-  Context.make = function (view) {
-    return (view instanceof Context) ? view : new Context(view);
-  };
-
-  Context.prototype.push = function (view) {
-    return new Context(view, this);
-  };
-
-  Context.prototype.lookup = function (name) {
-    var value;
-    if (name in this._cache) {
-      value = this._cache[name];
-    } else {
-      var context = this;
-
-      while (context) {
-        if (name.indexOf('.') > 0) {
-          value = context.view;
-
-          var names = name.split('.'), i = 0;
-          while (value != null && i < names.length) {
-            value = value[names[i++]];
-          }
-        } else {
-          value = context.view[name];
-        }
-
-        if (value != null) break;
-
-        context = context.parent;
-      }
-
-      this._cache[name] = value;
-    }
-
-    if (isFunction(value)) {
-      value = value.call(this.view);
-    }
-
-    return value;
-  };
-
-  function Writer() {
-    this.clearCache();
-  }
-
-  Writer.prototype.clearCache = function () {
-    this._cache = {};
-    this._partialCache = {};
-  };
-
-  Writer.prototype.compile = function (template, tags) {
-    var fn = this._cache[template];
-
-    if (!fn) {
-      var tokens = mustache.parse(template, tags);
-      fn = this._cache[template] = this.compileTokens(tokens, template);
-    }
-
-    return fn;
-  };
-
-  Writer.prototype.compilePartial = function (name, template, tags) {
-    var fn = this.compile(template, tags);
-    this._partialCache[name] = fn;
-    return fn;
-  };
-
-  Writer.prototype.getPartial = function (name) {
-    if (!(name in this._partialCache) && this._loadPartial) {
-      this.compilePartial(name, this._loadPartial(name));
-    }
-
-    return this._partialCache[name];
-  };
-
-  Writer.prototype.compileTokens = function (tokens, template) {
-    var self = this;
-    return function (view, partials) {
-      if (partials) {
-        if (isFunction(partials)) {
-          self._loadPartial = partials;
-        } else {
-          for (var name in partials) {
-            self.compilePartial(name, partials[name]);
-          }
-        }
-      }
-
-      return renderTokens(tokens, self, Context.make(view), template);
-    };
-  };
-
-  Writer.prototype.render = function (template, view, partials) {
-    return this.compile(template)(view, partials);
-  };
-
-  /**
-   * Low-level function that renders the given `tokens` using the given `writer`
-   * and `context`. The `template` string is only needed for templates that use
-   * higher-order sections to extract the portion of the original template that
-   * was contained in that section.
-   */
-  function renderTokens(tokens, writer, context, template) {
-    var buffer = '';
-
-    // This function is used to render an artbitrary template
-    // in the current context by higher-order functions.
-    function subRender(template) {
-      return writer.render(template, context);
-    }
-
-    var token, tokenValue, value;
-    for (var i = 0, len = tokens.length; i < len; ++i) {
-      token = tokens[i];
-      tokenValue = token[1];
-
-      switch (token[0]) {
-      case '#':
-        value = context.lookup(tokenValue);
-
-        if (typeof value === 'object' || typeof value === 'string') {
-          if (isArray(value)) {
-            for (var j = 0, jlen = value.length; j < jlen; ++j) {
-              buffer += renderTokens(token[4], writer, context.push(value[j]), template);
-            }
-          } else if (value) {
-            buffer += renderTokens(token[4], writer, context.push(value), template);
-          }
-        } else if (isFunction(value)) {
-          var text = template == null ? null : template.slice(token[3], token[5]);
-          value = value.call(context.view, text, subRender);
-          if (value != null) buffer += value;
-        } else if (value) {
-          buffer += renderTokens(token[4], writer, context, template);
-        }
-
-        break;
-      case '^':
-        value = context.lookup(tokenValue);
-
-        // Use JavaScript's definition of falsy. Include empty arrays.
-        // See https://github.com/janl/mustache.js/issues/186
-        if (!value || (isArray(value) && value.length === 0)) {
-          buffer += renderTokens(token[4], writer, context, template);
-        }
-
-        break;
-      case '>':
-        value = writer.getPartial(tokenValue);
-        if (isFunction(value)) buffer += value(context);
-        break;
-      case '&':
-        value = context.lookup(tokenValue);
-        if (value != null) buffer += value;
-        break;
-      case 'name':
-        value = context.lookup(tokenValue);
-        if (value != null) buffer += mustache.escape(value);
-        break;
-      case 'text':
-        buffer += tokenValue;
-        break;
-      }
-    }
-
-    return buffer;
-  }
-
-  /**
-   * Forms the given array of `tokens` into a nested tree structure where
-   * tokens that represent a section have two additional items: 1) an array of
-   * all tokens that appear in that section and 2) the index in the original
-   * template that represents the end of that section.
-   */
-  function nestTokens(tokens) {
-    var tree = [];
-    var collector = tree;
-    var sections = [];
-
-    var token;
-    for (var i = 0, len = tokens.length; i < len; ++i) {
-      token = tokens[i];
-      switch (token[0]) {
-      case '#':
-      case '^':
-        sections.push(token);
-        collector.push(token);
-        collector = token[4] = [];
-        break;
-      case '/':
-        var section = sections.pop();
-        section[5] = token[2];
-        collector = sections.length > 0 ? sections[sections.length - 1][4] : tree;
-        break;
-      default:
-        collector.push(token);
-      }
-    }
-
-    return tree;
-  }
-
-  /**
-   * Combines the values of consecutive text tokens in the given `tokens` array
-   * to a single token.
-   */
-  function squashTokens(tokens) {
-    var squashedTokens = [];
-
-    var token, lastToken;
-    for (var i = 0, len = tokens.length; i < len; ++i) {
-      token = tokens[i];
-      if (token) {
-        if (token[0] === 'text' && lastToken && lastToken[0] === 'text') {
-          lastToken[1] += token[1];
-          lastToken[3] = token[3];
-        } else {
-          lastToken = token;
-          squashedTokens.push(token);
-        }
-      }
-    }
-
-    return squashedTokens;
-  }
-
-  function escapeTags(tags) {
-    return [
-      new RegExp(escapeRegExp(tags[0]) + "\\s*"),
-      new RegExp("\\s*" + escapeRegExp(tags[1]))
-    ];
-  }
-
-  /**
-   * Breaks up the given `template` string into a tree of token objects. If
-   * `tags` is given here it must be an array with two string values: the
-   * opening and closing tags used in the template (e.g. ["<%", "%>"]). Of
-   * course, the default is to use mustaches (i.e. Mustache.tags).
-   */
-  function parseTemplate(template, tags) {
-    template = template || '';
-    tags = tags || mustache.tags;
-
-    if (typeof tags === 'string') tags = tags.split(spaceRe);
-    if (tags.length !== 2) throw new Error('Invalid tags: ' + tags.join(', '));
-
-    var tagRes = escapeTags(tags);
-    var scanner = new Scanner(template);
-
-    var sections = [];     // Stack to hold section tokens
-    var tokens = [];       // Buffer to hold the tokens
-    var spaces = [];       // Indices of whitespace tokens on the current line
-    var hasTag = false;    // Is there a {{tag}} on the current line?
-    var nonSpace = false;  // Is there a non-space char on the current line?
-
-    // Strips all whitespace tokens array for the current line
-    // if there was a {{#tag}} on it and otherwise only space.
-    function stripSpace() {
-      if (hasTag && !nonSpace) {
-        while (spaces.length) {
-          delete tokens[spaces.pop()];
-        }
-      } else {
-        spaces = [];
-      }
-
-      hasTag = false;
-      nonSpace = false;
-    }
-
-    var start, type, value, chr, token, openSection;
-    while (!scanner.eos()) {
-      start = scanner.pos;
-
-      // Match any text between tags.
-      value = scanner.scanUntil(tagRes[0]);
-      if (value) {
-        for (var i = 0, len = value.length; i < len; ++i) {
-          chr = value.charAt(i);
-
-          if (isWhitespace(chr)) {
-            spaces.push(tokens.length);
-          } else {
-            nonSpace = true;
-          }
-
-          tokens.push(['text', chr, start, start + 1]);
-          start += 1;
-
-          // Check for whitespace on the current line.
-          if (chr == '\n') stripSpace();
-        }
-      }
-
-      // Match the opening tag.
-      if (!scanner.scan(tagRes[0])) break;
-      hasTag = true;
-
-      // Get the tag type.
-      type = scanner.scan(tagRe) || 'name';
-      scanner.scan(whiteRe);
-
-      // Get the tag value.
-      if (type === '=') {
-        value = scanner.scanUntil(eqRe);
-        scanner.scan(eqRe);
-        scanner.scanUntil(tagRes[1]);
-      } else if (type === '{') {
-        value = scanner.scanUntil(new RegExp('\\s*' + escapeRegExp('}' + tags[1])));
-        scanner.scan(curlyRe);
-        scanner.scanUntil(tagRes[1]);
-        type = '&';
-      } else {
-        value = scanner.scanUntil(tagRes[1]);
-      }
-
-      // Match the closing tag.
-      if (!scanner.scan(tagRes[1])) throw new Error('Unclosed tag at ' + scanner.pos);
-
-      token = [type, value, start, scanner.pos];
-      tokens.push(token);
-
-      if (type === '#' || type === '^') {
-        sections.push(token);
-      } else if (type === '/') {
-        // Check section nesting.
-        openSection = sections.pop();
-        if (!openSection) {
-          throw new Error('Unopened section "' + value + '" at ' + start);
-        }
-        if (openSection[1] !== value) {
-          throw new Error('Unclosed section "' + openSection[1] + '" at ' + start);
-        }
-      } else if (type === 'name' || type === '{' || type === '&') {
-        nonSpace = true;
-      } else if (type === '=') {
-        // Set the tags for the next time around.
-        tags = value.split(spaceRe);
-        if (tags.length !== 2) {
-          throw new Error('Invalid tags at ' + start + ': ' + tags.join(', '));
-        }
-        tagRes = escapeTags(tags);
-      }
-    }
-
-    // Make sure there are no open sections when we're done.
-    openSection = sections.pop();
-    if (openSection) {
-      throw new Error('Unclosed section "' + openSection[1] + '" at ' + scanner.pos);
-    }
-
-    return nestTokens(squashTokens(tokens));
-  }
-
-  mustache.name = "mustache.js";
-  mustache.version = "0.7.3";
-  mustache.tags = ["{{", "}}"];
-
-  mustache.Scanner = Scanner;
-  mustache.Context = Context;
-  mustache.Writer = Writer;
-
-  mustache.parse = parseTemplate;
-
-  // Export the escaping function so that the user may override it.
-  // See https://github.com/janl/mustache.js/issues/244
-  mustache.escape = escapeHtml;
-
-  // All Mustache.* functions use this writer.
-  var defaultWriter = new Writer();
-
-  /**
-   * Clears all cached templates and partials in the default writer.
-   */
-  mustache.clearCache = function () {
-    return defaultWriter.clearCache();
-  };
-
-  /**
-   * Compiles the given `template` to a reusable function using the default
-   * writer.
-   */
-  mustache.compile = function (template, tags) {
-    return defaultWriter.compile(template, tags);
-  };
-
-  /**
-   * Compiles the partial with the given `name` and `template` to a reusable
-   * function using the default writer.
-   */
-  mustache.compilePartial = function (name, template, tags) {
-    return defaultWriter.compilePartial(name, template, tags);
-  };
-
-  /**
-   * Compiles the given array of tokens (the output of a parse) to a reusable
-   * function using the default writer.
-   */
-  mustache.compileTokens = function (tokens, template) {
-    return defaultWriter.compileTokens(tokens, template);
-  };
-
-  /**
-   * Renders the `template` with the given `view` and `partials` using the
-   * default writer.
-   */
-  mustache.render = function (template, view, partials) {
-    return defaultWriter.render(template, view, partials);
-  };
-
-  // This is here for backwards compatibility with 0.4.x.
-  mustache.to_html = function (template, view, partials, send) {
-    var result = mustache.render(template, view, partials);
-
-    if (isFunction(send)) {
-      send(result);
-    } else {
-      return result;
-    }
-  };
-
-}));
-
-})()
-},{}],20:[function(require,module,exports){
-'use strict';
-
-var url = require('./url');
-
-var ShareControl = L.Control.extend({
-    includes: [require('./load_tilejson')],
-
-    options: {
-        position: 'topleft',
-        url: ''
-    },
-
-    initialize: function(_, options) {
-        L.setOptions(this, options);
-        this._loadTileJSON(_);
-    },
-
-    _setTileJSON: function(json) {
-        this._tilejson = json;
-    },
-
-    onAdd: function(map) {
-        this._map = map;
-        this._url = url;
-
-        var container = L.DomUtil.create('div', 'leaflet-control-mapbox-share leaflet-bar');
-        var link = L.DomUtil.create('a', 'mapbox-share mapbox-icon mapbox-icon-share', container);
-        link.href = '#';
-
-        this._modal = L.DomUtil.create('div', 'mapbox-modal', this._map._container);
-        this._mask = L.DomUtil.create('div', 'mapbox-modal-mask', this._modal);
-        this._content = L.DomUtil.create('div', 'mapbox-modal-content', this._modal);
-
-        L.DomEvent.addListener(link, 'click', this._shareClick, this);
-        L.DomEvent.disableClickPropagation(container);
-
-        this._map.on('mousedown', this._clickOut, this);
-
-        return container;
-    },
-
-    _clickOut: function(e) {
-        if (this._sharing) {
-            L.DomEvent.preventDefault(e);
-            L.DomUtil.removeClass(this._modal, 'active');
-            this._content.innerHTML = '';
-            this._sharing = null;
-            return;
-        }
-    },
-
-    _shareClick: function(e) {
-        L.DomEvent.stop(e);
-        if (this._sharing) return this._clickOut(e);
-
-        var tilejson = this._tilejson || this._map._tilejson || {},
-            url = encodeURIComponent(this.options.url || tilejson.webpage || window.location),
-            name = encodeURIComponent(tilejson.name),
-            image = this._url.base() + tilejson.id + '/' + this._map.getCenter().lng + ',' + this._map.getCenter().lat + ',' + this._map.getZoom() + '/600x600.png',
-            embed = this._url.base() + tilejson.id + '.html?secure',
-            twitter = '//twitter.com/intent/tweet?status=' + name + ' ' + url,
-            facebook = '//www.facebook.com/sharer.php?u=' + url + '&t=' + encodeURIComponent(tilejson.name),
-            pinterest = '//www.pinterest.com/pin/create/button/?url=' + url + '&media=' + image + '&description=' + tilejson.name,
-            share = ("<h3>Share this map</h3>" +
-                    "<div class='mapbox-share-buttons'><a class='mapbox-button mapbox-button-icon mapbox-icon-facebook' target='_blank' href='{{facebook}}'>Facebook</a>" +
-                    "<a class='mapbox-button mapbox-button-icon mapbox-icon-twitter' target='_blank' href='{{twitter}}'>Twitter</a>" +
-                    "<a class='mapbox-button mapbox-button-icon mapbox-icon-pinterest' target='_blank' href='{{pinterest}}'>Pinterest</a></div>")
-                    .replace('{{twitter}}', twitter)
-                    .replace('{{facebook}}', facebook)
-                    .replace('{{pinterest}}', pinterest),
-            embedValue = '<iframe width="100%" height="500px" frameBorder="0" src="{{embed}}"></iframe>'.replace('{{embed}}', embed),
-            embedLabel = 'Copy and paste this <strong>HTML code</strong> into documents to embed this map on web pages.';
-
-        L.DomUtil.addClass(this._modal, 'active');
-
-        this._sharing = L.DomUtil.create('div', 'mapbox-modal-body', this._content);
-        this._sharing.innerHTML = share;
-
-        var input = L.DomUtil.create('input', 'mapbox-embed', this._sharing);
-        input.type = 'text';
-        input.value = embedValue;
-
-        var label = L.DomUtil.create('label', 'mapbox-embed-description', this._sharing);
-        label.innerHTML = embedLabel;
-
-        var close = L.DomUtil.create('a', 'leaflet-popup-close-button', this._sharing);
-        close.href = '#';
-
-        L.DomEvent.disableClickPropagation(this._sharing);
-        L.DomEvent.addListener(close, 'click', this._clickOut, this);
-        L.DomEvent.addListener(input, 'click', function(e) {
-            e.target.focus();
-            e.target.select();
-        });
-    }
-});
-
-module.exports.ShareControl = ShareControl;
-
-module.exports.shareControl = function(_, options) {
-    return new ShareControl(_, options);
-};
-
-},{"./url":29,"./load_tilejson":30}],21:[function(require,module,exports){
-'use strict';
-
-var util = require('./util'),
-    url = require('./url');
-
-var TileLayer = L.TileLayer.extend({
-    includes: [require('./load_tilejson')],
-
-    options: {
-        format: 'png'
-    },
-
-    // http://mapbox.com/developers/api/#image_quality
-    formats: [
-        'png',
-        // PNG
-        'png32', 'png64', 'png128', 'png256',
-        // JPG
-        'jpg70', 'jpg80', 'jpg90'],
-
-    scalePrefix: '@2x.',
-
-    initialize: function(_, options) {
-        L.TileLayer.prototype.initialize.call(this, undefined, options);
-
-        this._tilejson = {};
-
-        if (options && options.detectRetina &&
-            L.Browser.retina && options.retinaVersion) {
-            _ = options.retinaVersion;
-        }
-
-        if (options && options.format) {
-            util.strict_oneof(options.format, this.formats);
-        }
-
-        this._loadTileJSON(_);
-    },
-
-    setFormat: function(_) {
-        util.strict(_, 'string');
-        this.options.format = _;
-        this.redraw();
-        return this;
-    },
-
-    _autoScale: function() {
-        return this.options &&
-            L.Browser.retina &&
-            this.options.detectRetina &&
-            (!this.options.retinaVersion) &&
-            this.options.autoscale;
-    },
-
-    // disable the setUrl function, which is not available on mapbox tilelayers
-    setUrl: null,
-
-    _setTileJSON: function(json) {
-        util.strict(json, 'object');
-
-        L.extend(this.options, {
-            tiles: json.tiles,
-            attribution: json.attribution,
-            minZoom: json.minzoom || 0,
-            maxZoom: json.maxzoom || 18,
-            autoscale: json.autoscale || false,
-            tms: json.scheme === 'tms',
-            bounds: json.bounds && util.lbounds(json.bounds)
-        });
-
-        this._tilejson = json;
-        this.redraw();
-        return this;
-    },
-
-    getTileJSON: function() {
-        return this._tilejson;
-    },
-
-    // this is an exception to mapbox.js naming rules because it's called
-    // by `L.map`
-    getTileUrl: function(tilePoint) {
-        var tiles = this.options.tiles,
-            index = Math.floor(Math.abs(tilePoint.x + tilePoint.y) % tiles.length),
-            url = tiles[index];
-
-        var templated = L.Util.template(url, tilePoint);
-        if (!templated) {
-            return templated;
-        } else {
-            return templated.replace('.png',
-                (this._autoScale() ? this.scalePrefix : '.') + this.options.format);
-        }
-    },
-
-    // TileJSON.TileLayers are added to the map immediately, so that they get
-    // the desired z-index, but do not update until the TileJSON has been loaded.
-    _update: function() {
-        if (this.options.tiles) {
-            L.TileLayer.prototype._update.call(this);
-        }
-    }
-});
-
-module.exports.TileLayer = TileLayer;
-
-module.exports.tileLayer = function(_, options) {
-    return new TileLayer(_, options);
-};
-
-},{"./util":31,"./url":29,"./load_tilejson":30}],24:[function(require,module,exports){
-'use strict';
-
-var util = require('./util'),
-    url = require('./url'),
-    request = require('./request'),
-    grid = require('./grid');
-
-// forked from danzel/L.UTFGrid
-var GridLayer = L.Class.extend({
-    includes: [L.Mixin.Events, require('./load_tilejson')],
-
-    options: {
-        template: function() { return ''; }
-    },
-
-    _mouseOn: null,
-    _tilejson: {},
-    _cache: {},
-
-    initialize: function(_, options) {
-        L.Util.setOptions(this, options);
-        this._loadTileJSON(_);
-    },
-
-    _setTileJSON: function(json) {
-        util.strict(json, 'object');
-
-        L.extend(this.options, {
-            grids: json.grids,
-            minZoom: json.minzoom,
-            maxZoom: json.maxzoom,
-            bounds: json.bounds && util.lbounds(json.bounds)
-        });
-
-        this._tilejson = json;
-        this._cache = {};
-        this._update();
-
-        return this;
-    },
-
-    getTileJSON: function() {
-        return this._tilejson;
-    },
-
-    active: function() {
-        return !!(this._map && this.options.grids && this.options.grids.length);
-    },
-
-    addTo: function (map) {
-        map.addLayer(this);
-        return this;
-    },
-
-    onAdd: function(map) {
-        this._map = map;
-        this._update();
-
-        this._map
-            .on('click', this._click, this)
-            .on('mousemove', this._move, this)
-            .on('moveend', this._update, this);
-    },
-
-    onRemove: function() {
-        this._map
-            .off('click', this._click, this)
-            .off('mousemove', this._move, this)
-            .off('moveend', this._update, this);
-    },
-
-    getData: function(latlng, callback) {
-        if (!this.active()) return;
-
-        var map = this._map,
-            point = map.project(latlng.wrap()),
-            tileSize = 256,
-            resolution = 4,
-            x = Math.floor(point.x / tileSize),
-            y = Math.floor(point.y / tileSize),
-            max = map.options.crs.scale(map.getZoom()) / tileSize;
-
-        x = (x + max) % max;
-        y = (y + max) % max;
-
-        this._getTile(map.getZoom(), x, y, function(grid) {
-            var gridX = Math.floor((point.x - (x * tileSize)) / resolution),
-                gridY = Math.floor((point.y - (y * tileSize)) / resolution);
-
-            callback(grid(gridX, gridY));
-        });
-
-        return this;
-    },
-
-    _click: function(e) {
-        this.getData(e.latlng, L.bind(function(data) {
-            this.fire('click', {
-                latLng: e.latlng,
-                data: data
-            });
-        }, this));
-    },
-
-    _move: function(e) {
-        this.getData(e.latlng, L.bind(function(data) {
-            if (data !== this._mouseOn) {
-                if (this._mouseOn) {
-                    this.fire('mouseout', {
-                        latLng: e.latlng,
-                        data: this._mouseOn
-                    });
-                }
-
-                this.fire('mouseover', {
-                    latLng: e.latlng,
-                    data: data
-                });
-
-                this._mouseOn = data;
-            } else {
-                this.fire('mousemove', {
-                    latLng: e.latlng,
-                    data: data
-                });
-            }
-        }, this));
-    },
-
-    _getTileURL: function(tilePoint) {
-        var urls = this.options.grids,
-            index = (tilePoint.x + tilePoint.y) % urls.length,
-            url = urls[index];
-
-        return L.Util.template(url, tilePoint);
-    },
-
-    // Load up all required json grid files
-    _update: function() {
-        if (!this.active()) return;
-
-        var bounds = this._map.getPixelBounds(),
-            z = this._map.getZoom(),
-            tileSize = 256;
-
-        if (z > this.options.maxZoom || z < this.options.minZoom) return;
-
-        var nwTilePoint = new L.Point(
-                Math.floor(bounds.min.x / tileSize),
-                Math.floor(bounds.min.y / tileSize)),
-            seTilePoint = new L.Point(
-                Math.floor(bounds.max.x / tileSize),
-                Math.floor(bounds.max.y / tileSize)),
-            max = this._map.options.crs.scale(z) / tileSize;
-
-        for (var x = nwTilePoint.x; x <= seTilePoint.x; x++) {
-            for (var y = nwTilePoint.y; y <= seTilePoint.y; y++) {
-                // x wrapped
-                var xw = (x + max) % max, yw = (y + max) % max;
-                this._getTile(z, xw, yw);
-            }
-        }
-    },
-
-    _getTile: function(z, x, y, callback) {
-        var key = z + '_' + x + '_' + y,
-            tilePoint = L.point(x, y);
-
-        tilePoint.z = z;
-
-        if (!this._tileShouldBeLoaded(tilePoint)) {
-            return;
-        }
-
-        if (key in this._cache) {
-            if (!callback) return;
-
-            if (typeof this._cache[key] === 'function') {
-                callback(this._cache[key]); // Already loaded
-            } else {
-                this._cache[key].push(callback); // Pending
-            }
-
-            return;
-        }
-
-        this._cache[key] = [];
-
-        if (callback) {
-            this._cache[key].push(callback);
-        }
-
-        request(this._getTileURL(tilePoint), L.bind(function(err, json) {
-            var callbacks = this._cache[key];
-            this._cache[key] = grid(json);
-            for (var i = 0; i < callbacks.length; ++i) {
-                callbacks[i](this._cache[key]);
-            }
-        }, this));
-    },
-
-    _tileShouldBeLoaded: function(tilePoint) {
-        if (tilePoint.z > this.options.maxZoom || tilePoint.z < this.options.minZoom) {
-            return false;
-        }
-
-        if (this.options.bounds) {
-            var tileSize = 256,
-                nwPoint = tilePoint.multiplyBy(tileSize),
-                sePoint = nwPoint.add(new L.Point(tileSize, tileSize)),
-                nw = this._map.unproject(nwPoint),
-                se = this._map.unproject(sePoint),
-                bounds = new L.LatLngBounds([nw, se]);
-
-            if (!this.options.bounds.intersects(bounds)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-});
-
-module.exports.GridLayer = GridLayer;
-
-module.exports.gridLayer = function(_, options) {
-    return new GridLayer(_, options);
-};
-
-},{"./util":31,"./url":29,"./request":32,"./grid":33,"./load_tilejson":30}],25:[function(require,module,exports){
-'use strict';
-
-var util = require('./util'),
-    urlhelper = require('./url'),
-    request = require('./request');
-
-// Low-level geocoding interface - wraps specific API calls and their
-// return values.
-module.exports = function(_) {
-
-    var geocoder = {}, url;
-
-    geocoder.getURL = function(_) {
-        return url;
-    };
-
-    geocoder.setURL = function(_) {
-        url = urlhelper.jsonify(_);
-        return geocoder;
-    };
-
-    geocoder.setID = function(_) {
-        util.strict(_, 'string');
-        geocoder.setURL(urlhelper.base() + _ + '/geocode/{query}.json');
-        return geocoder;
-    };
-
-    geocoder.setTileJSON = function(_) {
-        util.strict(_, 'object');
-        geocoder.setURL(_.geocoder);
-        return geocoder;
-    };
-
-    geocoder.queryURL = function(_) {
-        if (!geocoder.getURL()) throw new Error('Geocoding map ID not set');
-        if (typeof _ !== 'string') {
-            var parts = [];
-            for (var i = 0; i < _.length; i++) {
-                parts[i] = encodeURIComponent(_[i]);
-            }
-            return L.Util.template(geocoder.getURL(), {
-                query: parts.join(';')
-            });
-        } else {
-            return L.Util.template(geocoder.getURL(), {
-                query: encodeURIComponent(_)
-            });
-        }
-    };
-
-    geocoder.query = function(_, callback) {
-        util.strict(callback, 'function');
-        request(geocoder.queryURL(_), function(err, json) {
-            if (json && (json.length || json.results)) {
-                var res = {
-                    results: json.length ? json : json.results,
-                };
-                if (json.results) {
-                    res.latlng = [json.results[0][0].lat,
-                        json.results[0][0].lon];
-                }
-                if (json.results && json.results[0][0].bounds !== undefined) {
-                    res.bounds = json.results[0][0].bounds;
-                    res.lbounds = util.lbounds(res.bounds);
-                }
-                callback(null, res);
-            } else callback(err || true);
-        });
-
-        return geocoder;
-    };
-
-    // a reverse geocode:
-    //
-    //  geocoder.reverseQuery([80, 20])
-    geocoder.reverseQuery = function(_, callback) {
-        var q = '';
-
-        // sort through different ways people represent lat and lon pairs
-        function normalize(x) {
-            if (x.lat !== undefined && x.lng !== undefined) {
-                return x.lng + ',' + x.lat;
-            } else if (x.lat !== undefined && x.lon !== undefined) {
-                return x.lon + ',' + x.lat;
-            } else {
-                return x[0] + ',' + x[1];
-            }
-        }
-
-        if (_.length && _[0].length) {
-            for (var i = 0, pts = []; i < _.length; i++) {
-                pts.push(normalize(_[i]));
-            }
-            q = pts.join(';');
-        } else {
-            q = normalize(_);
-        }
-
-        request(geocoder.queryURL(q), function(err, json) {
-            callback(err, json);
-        });
-
-        return geocoder;
-    };
-
-    if (typeof _ === 'string') {
-        if (_.indexOf('/') == -1) geocoder.setID(_);
-        else geocoder.setURL(_);
-    } else if (typeof _ === 'object') {
-        geocoder.setTileJSON(_);
-    }
-
-    return geocoder;
-};
-
-},{"./util":31,"./url":29,"./request":32}],12:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 (function(){/*
  Leaflet, a JavaScript library for mobile-friendly interactive maps. http://leafletjs.com
  (c) 2010-2013, Vladimir Agafonkin
@@ -30350,90 +29125,1045 @@ L.Map.include({
 
 }(window, document));
 })()
-},{}],31:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
+'use strict';
+
+// an implementation of the simplestyle spec for polygon and linestring features
+// https://github.com/mapbox/simplestyle-spec
+var defaults = {
+    stroke: '#555555',
+    'stroke-width': 2,
+    'stroke-opacity': 1,
+    fill: '#555555',
+    'fill-opacity': 0.5
+};
+
+var mapping = [
+    ['stroke', 'color'],
+    ['stroke-width', 'weight'],
+    ['stroke-opacity', 'opacity'],
+    ['fill', 'fillColor'],
+    ['fill-opacity', 'fillOpacity']
+];
+
+function fallback(a, b) {
+    var c = {};
+    for (var k in b) {
+        if (a[k] === undefined) c[k] = b[k];
+        else c[k] = a[k];
+    }
+    return c;
+}
+
+function remap(a) {
+    var d = {};
+    for (var i = 0; i < mapping.length; i++) {
+        d[mapping[i][1]] = a[mapping[i][0]];
+    }
+    return d;
+}
+
+function style(feature) {
+    return remap(fallback(feature.properties || {}, defaults));
+}
+
+module.exports = {
+    style: style,
+    defaults: defaults
+};
+
+},{}],15:[function(require,module,exports){
 'use strict';
 
 module.exports = {
-    idUrl: function(_, t) {
-        if (_.indexOf('/') == -1) t.loadID(_);
-        else t.loadURL(_);
-    },
-    log: function(_) {
-        if (console && typeof console.error === 'function') {
-            console.error(_);
-        }
-    },
-    strict: function(_, type) {
-        if (typeof _ !== type) {
-            throw new Error('Invalid argument: ' + type + ' expected');
-        }
-    },
-    strict_instance: function(_, klass, name) {
-        if (!(_ instanceof klass)) {
-            throw new Error('Invalid argument: ' + name + ' expected');
-        }
-    },
-    strict_oneof: function(_, values) {
-        if (!contains(_, values)) {
-            throw new Error('Invalid argument: ' + _ + ' given, valid values are ' +
-                values.join(', '));
-        }
-    },
-    strip_tags: function(_) {
-        return _.replace(/<[^<]+>/g, '');
-    },
-    lbounds: function(_) {
-        // leaflet-compatible bounds, since leaflet does not do geojson
-        return new L.LatLngBounds([[_[1], _[0]], [_[3], _[2]]]);
-    }
+
+    HTTP_URLS: [
+        'http://a.tiles.mapbox.com/v3/',
+        'http://b.tiles.mapbox.com/v3/'],
+
+    FORCE_HTTPS: false,
+
+    HTTPS_URLS: [
+        'https://a.tiles.mapbox.com/v3/',
+        'https://b.tiles.mapbox.com/v3/']
 };
 
-function contains(item, list) {
-    if (!list || !list.length) return false;
-    for (var i = 0; i < list.length; i++) {
-        if (list[i] == item) return true;
-    }
-    return false;
-}
-
-},{}],33:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 'use strict';
 
-function utfDecode(c) {
-    if (c >= 93) c--;
-    if (c >= 35) c--;
-    return c - 32;
-}
+// Hardcode image path, because Leaflet's autodetection
+// fails, because mapbox.js is not named leaflet.js
+window.L.Icon.Default.imagePath = '//api.tiles.mapbox.com/mapbox.js/' + 'v' +
+    require('./package.json').version + '/images';
 
-module.exports = function(data) {
-    return function(x, y) {
-        if (!data) return;
-        var idx = utfDecode(data.grid[y].charCodeAt(x)),
-            key = data.keys[idx];
-        return data.data[key];
-    };
+var geocoderControl = require('./src/geocoder_control'),
+    gridControl = require('./src/grid_control'),
+    featureLayer = require('./src/feature_layer'),
+    legendControl = require('./src/legend_control'),
+    shareControl = require('./src/share_control'),
+    tileLayer = require('./src/tile_layer'),
+    infoControl = require('./src/info_control'),
+    map = require('./src/map'),
+    gridLayer = require('./src/grid_layer');
+
+L.mapbox = module.exports = {
+    VERSION: require('./package.json').version,
+    geocoder: require('./src/geocoder'),
+    marker: require('./src/marker'),
+    simplestyle: require('./src/simplestyle'),
+    tileLayer: tileLayer.tileLayer,
+    TileLayer: tileLayer.TileLayer,
+    infoControl: infoControl.infoControl,
+    InfoControl: infoControl.InfoControl,
+    shareControl: shareControl.shareControl,
+    ShareControl: shareControl.ShareControl,
+    legendControl: legendControl.legendControl,
+    LegendControl: legendControl.LegendControl,
+    geocoderControl: geocoderControl.geocoderControl,
+    GeocoderControl: geocoderControl.GeocoderControl,
+    gridControl: gridControl.gridControl,
+    GridControl: gridControl.GridControl,
+    gridLayer: gridLayer.gridLayer,
+    GridLayer: gridLayer.GridLayer,
+    featureLayer: featureLayer.featureLayer,
+    FeatureLayer: featureLayer.FeatureLayer,
+    map: map.map,
+    Map: map.Map,
+    config: require('./src/config'),
+    sanitize: require('sanitize-caja'),
+    template: require('mustache').to_html
 };
 
-},{}],27:[function(require,module,exports){
-var html_sanitize = require('./sanitizer-bundle.js');
+L.mapbox.markerLayer = L.mapbox.featureLayer;
 
-module.exports = function(_) {
-    if (!_) return '';
-    return html_sanitize(_, cleanUrl, cleanId);
-};
+},{"./package.json":13,"./src/geocoder_control":16,"./src/grid_control":17,"./src/feature_layer":18,"./src/legend_control":19,"./src/share_control":20,"./src/tile_layer":21,"./src/info_control":22,"./src/map":23,"./src/grid_layer":24,"./src/geocoder":25,"./src/marker":26,"./src/simplestyle":14,"./src/config":15,"sanitize-caja":27,"mustache":28}],28:[function(require,module,exports){
+(function(){/*!
+ * mustache.js - Logic-less {{mustache}} templates with JavaScript
+ * http://github.com/janl/mustache.js
+ */
 
-// https://bugzilla.mozilla.org/show_bug.cgi?id=255107
-function cleanUrl(url) {
-    'use strict';
-    if (/^https?/.test(url.getScheme())) return url.toString();
-    if ('data' == url.getScheme() && /^image/.test(url.getPath())) {
-        return url.toString();
+/*global define: false*/
+
+(function (root, factory) {
+  if (typeof exports === "object" && exports) {
+    factory(exports); // CommonJS
+  } else {
+    var mustache = {};
+    factory(mustache);
+    if (typeof define === "function" && define.amd) {
+      define(mustache); // AMD
+    } else {
+      root.Mustache = mustache; // <script>
     }
-}
+  }
+}(this, function (mustache) {
 
-function cleanId(id) { return id; }
+  var whiteRe = /\s*/;
+  var spaceRe = /\s+/;
+  var nonSpaceRe = /\S/;
+  var eqRe = /\s*=/;
+  var curlyRe = /\s*\}/;
+  var tagRe = /#|\^|\/|>|\{|&|=|!/;
 
-},{"./sanitizer-bundle.js":34}],23:[function(require,module,exports){
+  // Workaround for https://issues.apache.org/jira/browse/COUCHDB-577
+  // See https://github.com/janl/mustache.js/issues/189
+  var RegExp_test = RegExp.prototype.test;
+  function testRegExp(re, string) {
+    return RegExp_test.call(re, string);
+  }
+
+  function isWhitespace(string) {
+    return !testRegExp(nonSpaceRe, string);
+  }
+
+  var Object_toString = Object.prototype.toString;
+  var isArray = Array.isArray || function (object) {
+    return Object_toString.call(object) === '[object Array]';
+  };
+
+  function isFunction(object) {
+    return typeof object === 'function';
+  }
+
+  function escapeRegExp(string) {
+    return string.replace(/[\-\[\]{}()*+?.,\\\^$|#\s]/g, "\\$&");
+  }
+
+  var entityMap = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': '&quot;',
+    "'": '&#39;',
+    "/": '&#x2F;'
+  };
+
+  function escapeHtml(string) {
+    return String(string).replace(/[&<>"'\/]/g, function (s) {
+      return entityMap[s];
+    });
+  }
+
+  function Scanner(string) {
+    this.string = string;
+    this.tail = string;
+    this.pos = 0;
+  }
+
+  /**
+   * Returns `true` if the tail is empty (end of string).
+   */
+  Scanner.prototype.eos = function () {
+    return this.tail === "";
+  };
+
+  /**
+   * Tries to match the given regular expression at the current position.
+   * Returns the matched text if it can match, the empty string otherwise.
+   */
+  Scanner.prototype.scan = function (re) {
+    var match = this.tail.match(re);
+
+    if (match && match.index === 0) {
+      var string = match[0];
+      this.tail = this.tail.substring(string.length);
+      this.pos += string.length;
+      return string;
+    }
+
+    return "";
+  };
+
+  /**
+   * Skips all text until the given regular expression can be matched. Returns
+   * the skipped string, which is the entire tail if no match can be made.
+   */
+  Scanner.prototype.scanUntil = function (re) {
+    var index = this.tail.search(re), match;
+
+    switch (index) {
+    case -1:
+      match = this.tail;
+      this.tail = "";
+      break;
+    case 0:
+      match = "";
+      break;
+    default:
+      match = this.tail.substring(0, index);
+      this.tail = this.tail.substring(index);
+    }
+
+    this.pos += match.length;
+
+    return match;
+  };
+
+  function Context(view, parent) {
+    this.view = view == null ? {} : view;
+    this.parent = parent;
+    this._cache = { '.': this.view };
+  }
+
+  Context.make = function (view) {
+    return (view instanceof Context) ? view : new Context(view);
+  };
+
+  Context.prototype.push = function (view) {
+    return new Context(view, this);
+  };
+
+  Context.prototype.lookup = function (name) {
+    var value;
+    if (name in this._cache) {
+      value = this._cache[name];
+    } else {
+      var context = this;
+
+      while (context) {
+        if (name.indexOf('.') > 0) {
+          value = context.view;
+
+          var names = name.split('.'), i = 0;
+          while (value != null && i < names.length) {
+            value = value[names[i++]];
+          }
+        } else {
+          value = context.view[name];
+        }
+
+        if (value != null) break;
+
+        context = context.parent;
+      }
+
+      this._cache[name] = value;
+    }
+
+    if (isFunction(value)) {
+      value = value.call(this.view);
+    }
+
+    return value;
+  };
+
+  function Writer() {
+    this.clearCache();
+  }
+
+  Writer.prototype.clearCache = function () {
+    this._cache = {};
+    this._partialCache = {};
+  };
+
+  Writer.prototype.compile = function (template, tags) {
+    var fn = this._cache[template];
+
+    if (!fn) {
+      var tokens = mustache.parse(template, tags);
+      fn = this._cache[template] = this.compileTokens(tokens, template);
+    }
+
+    return fn;
+  };
+
+  Writer.prototype.compilePartial = function (name, template, tags) {
+    var fn = this.compile(template, tags);
+    this._partialCache[name] = fn;
+    return fn;
+  };
+
+  Writer.prototype.getPartial = function (name) {
+    if (!(name in this._partialCache) && this._loadPartial) {
+      this.compilePartial(name, this._loadPartial(name));
+    }
+
+    return this._partialCache[name];
+  };
+
+  Writer.prototype.compileTokens = function (tokens, template) {
+    var self = this;
+    return function (view, partials) {
+      if (partials) {
+        if (isFunction(partials)) {
+          self._loadPartial = partials;
+        } else {
+          for (var name in partials) {
+            self.compilePartial(name, partials[name]);
+          }
+        }
+      }
+
+      return renderTokens(tokens, self, Context.make(view), template);
+    };
+  };
+
+  Writer.prototype.render = function (template, view, partials) {
+    return this.compile(template)(view, partials);
+  };
+
+  /**
+   * Low-level function that renders the given `tokens` using the given `writer`
+   * and `context`. The `template` string is only needed for templates that use
+   * higher-order sections to extract the portion of the original template that
+   * was contained in that section.
+   */
+  function renderTokens(tokens, writer, context, template) {
+    var buffer = '';
+
+    // This function is used to render an artbitrary template
+    // in the current context by higher-order functions.
+    function subRender(template) {
+      return writer.render(template, context);
+    }
+
+    var token, tokenValue, value;
+    for (var i = 0, len = tokens.length; i < len; ++i) {
+      token = tokens[i];
+      tokenValue = token[1];
+
+      switch (token[0]) {
+      case '#':
+        value = context.lookup(tokenValue);
+
+        if (typeof value === 'object' || typeof value === 'string') {
+          if (isArray(value)) {
+            for (var j = 0, jlen = value.length; j < jlen; ++j) {
+              buffer += renderTokens(token[4], writer, context.push(value[j]), template);
+            }
+          } else if (value) {
+            buffer += renderTokens(token[4], writer, context.push(value), template);
+          }
+        } else if (isFunction(value)) {
+          var text = template == null ? null : template.slice(token[3], token[5]);
+          value = value.call(context.view, text, subRender);
+          if (value != null) buffer += value;
+        } else if (value) {
+          buffer += renderTokens(token[4], writer, context, template);
+        }
+
+        break;
+      case '^':
+        value = context.lookup(tokenValue);
+
+        // Use JavaScript's definition of falsy. Include empty arrays.
+        // See https://github.com/janl/mustache.js/issues/186
+        if (!value || (isArray(value) && value.length === 0)) {
+          buffer += renderTokens(token[4], writer, context, template);
+        }
+
+        break;
+      case '>':
+        value = writer.getPartial(tokenValue);
+        if (isFunction(value)) buffer += value(context);
+        break;
+      case '&':
+        value = context.lookup(tokenValue);
+        if (value != null) buffer += value;
+        break;
+      case 'name':
+        value = context.lookup(tokenValue);
+        if (value != null) buffer += mustache.escape(value);
+        break;
+      case 'text':
+        buffer += tokenValue;
+        break;
+      }
+    }
+
+    return buffer;
+  }
+
+  /**
+   * Forms the given array of `tokens` into a nested tree structure where
+   * tokens that represent a section have two additional items: 1) an array of
+   * all tokens that appear in that section and 2) the index in the original
+   * template that represents the end of that section.
+   */
+  function nestTokens(tokens) {
+    var tree = [];
+    var collector = tree;
+    var sections = [];
+
+    var token;
+    for (var i = 0, len = tokens.length; i < len; ++i) {
+      token = tokens[i];
+      switch (token[0]) {
+      case '#':
+      case '^':
+        sections.push(token);
+        collector.push(token);
+        collector = token[4] = [];
+        break;
+      case '/':
+        var section = sections.pop();
+        section[5] = token[2];
+        collector = sections.length > 0 ? sections[sections.length - 1][4] : tree;
+        break;
+      default:
+        collector.push(token);
+      }
+    }
+
+    return tree;
+  }
+
+  /**
+   * Combines the values of consecutive text tokens in the given `tokens` array
+   * to a single token.
+   */
+  function squashTokens(tokens) {
+    var squashedTokens = [];
+
+    var token, lastToken;
+    for (var i = 0, len = tokens.length; i < len; ++i) {
+      token = tokens[i];
+      if (token) {
+        if (token[0] === 'text' && lastToken && lastToken[0] === 'text') {
+          lastToken[1] += token[1];
+          lastToken[3] = token[3];
+        } else {
+          lastToken = token;
+          squashedTokens.push(token);
+        }
+      }
+    }
+
+    return squashedTokens;
+  }
+
+  function escapeTags(tags) {
+    return [
+      new RegExp(escapeRegExp(tags[0]) + "\\s*"),
+      new RegExp("\\s*" + escapeRegExp(tags[1]))
+    ];
+  }
+
+  /**
+   * Breaks up the given `template` string into a tree of token objects. If
+   * `tags` is given here it must be an array with two string values: the
+   * opening and closing tags used in the template (e.g. ["<%", "%>"]). Of
+   * course, the default is to use mustaches (i.e. Mustache.tags).
+   */
+  function parseTemplate(template, tags) {
+    template = template || '';
+    tags = tags || mustache.tags;
+
+    if (typeof tags === 'string') tags = tags.split(spaceRe);
+    if (tags.length !== 2) throw new Error('Invalid tags: ' + tags.join(', '));
+
+    var tagRes = escapeTags(tags);
+    var scanner = new Scanner(template);
+
+    var sections = [];     // Stack to hold section tokens
+    var tokens = [];       // Buffer to hold the tokens
+    var spaces = [];       // Indices of whitespace tokens on the current line
+    var hasTag = false;    // Is there a {{tag}} on the current line?
+    var nonSpace = false;  // Is there a non-space char on the current line?
+
+    // Strips all whitespace tokens array for the current line
+    // if there was a {{#tag}} on it and otherwise only space.
+    function stripSpace() {
+      if (hasTag && !nonSpace) {
+        while (spaces.length) {
+          delete tokens[spaces.pop()];
+        }
+      } else {
+        spaces = [];
+      }
+
+      hasTag = false;
+      nonSpace = false;
+    }
+
+    var start, type, value, chr, token, openSection;
+    while (!scanner.eos()) {
+      start = scanner.pos;
+
+      // Match any text between tags.
+      value = scanner.scanUntil(tagRes[0]);
+      if (value) {
+        for (var i = 0, len = value.length; i < len; ++i) {
+          chr = value.charAt(i);
+
+          if (isWhitespace(chr)) {
+            spaces.push(tokens.length);
+          } else {
+            nonSpace = true;
+          }
+
+          tokens.push(['text', chr, start, start + 1]);
+          start += 1;
+
+          // Check for whitespace on the current line.
+          if (chr == '\n') stripSpace();
+        }
+      }
+
+      // Match the opening tag.
+      if (!scanner.scan(tagRes[0])) break;
+      hasTag = true;
+
+      // Get the tag type.
+      type = scanner.scan(tagRe) || 'name';
+      scanner.scan(whiteRe);
+
+      // Get the tag value.
+      if (type === '=') {
+        value = scanner.scanUntil(eqRe);
+        scanner.scan(eqRe);
+        scanner.scanUntil(tagRes[1]);
+      } else if (type === '{') {
+        value = scanner.scanUntil(new RegExp('\\s*' + escapeRegExp('}' + tags[1])));
+        scanner.scan(curlyRe);
+        scanner.scanUntil(tagRes[1]);
+        type = '&';
+      } else {
+        value = scanner.scanUntil(tagRes[1]);
+      }
+
+      // Match the closing tag.
+      if (!scanner.scan(tagRes[1])) throw new Error('Unclosed tag at ' + scanner.pos);
+
+      token = [type, value, start, scanner.pos];
+      tokens.push(token);
+
+      if (type === '#' || type === '^') {
+        sections.push(token);
+      } else if (type === '/') {
+        // Check section nesting.
+        openSection = sections.pop();
+        if (!openSection) {
+          throw new Error('Unopened section "' + value + '" at ' + start);
+        }
+        if (openSection[1] !== value) {
+          throw new Error('Unclosed section "' + openSection[1] + '" at ' + start);
+        }
+      } else if (type === 'name' || type === '{' || type === '&') {
+        nonSpace = true;
+      } else if (type === '=') {
+        // Set the tags for the next time around.
+        tags = value.split(spaceRe);
+        if (tags.length !== 2) {
+          throw new Error('Invalid tags at ' + start + ': ' + tags.join(', '));
+        }
+        tagRes = escapeTags(tags);
+      }
+    }
+
+    // Make sure there are no open sections when we're done.
+    openSection = sections.pop();
+    if (openSection) {
+      throw new Error('Unclosed section "' + openSection[1] + '" at ' + scanner.pos);
+    }
+
+    return nestTokens(squashTokens(tokens));
+  }
+
+  mustache.name = "mustache.js";
+  mustache.version = "0.7.3";
+  mustache.tags = ["{{", "}}"];
+
+  mustache.Scanner = Scanner;
+  mustache.Context = Context;
+  mustache.Writer = Writer;
+
+  mustache.parse = parseTemplate;
+
+  // Export the escaping function so that the user may override it.
+  // See https://github.com/janl/mustache.js/issues/244
+  mustache.escape = escapeHtml;
+
+  // All Mustache.* functions use this writer.
+  var defaultWriter = new Writer();
+
+  /**
+   * Clears all cached templates and partials in the default writer.
+   */
+  mustache.clearCache = function () {
+    return defaultWriter.clearCache();
+  };
+
+  /**
+   * Compiles the given `template` to a reusable function using the default
+   * writer.
+   */
+  mustache.compile = function (template, tags) {
+    return defaultWriter.compile(template, tags);
+  };
+
+  /**
+   * Compiles the partial with the given `name` and `template` to a reusable
+   * function using the default writer.
+   */
+  mustache.compilePartial = function (name, template, tags) {
+    return defaultWriter.compilePartial(name, template, tags);
+  };
+
+  /**
+   * Compiles the given array of tokens (the output of a parse) to a reusable
+   * function using the default writer.
+   */
+  mustache.compileTokens = function (tokens, template) {
+    return defaultWriter.compileTokens(tokens, template);
+  };
+
+  /**
+   * Renders the `template` with the given `view` and `partials` using the
+   * default writer.
+   */
+  mustache.render = function (template, view, partials) {
+    return defaultWriter.render(template, view, partials);
+  };
+
+  // This is here for backwards compatibility with 0.4.x.
+  mustache.to_html = function (template, view, partials, send) {
+    var result = mustache.render(template, view, partials);
+
+    if (isFunction(send)) {
+      send(result);
+    } else {
+      return result;
+    }
+  };
+
+}));
+
+})()
+},{}],16:[function(require,module,exports){
+'use strict';
+
+var geocoder = require('./geocoder');
+
+var GeocoderControl = L.Control.extend({
+    includes: L.Mixin.Events,
+
+    options: {
+        position: 'topleft',
+        pointZoom: 16,
+        keepOpen: false
+    },
+
+    initialize: function(_, options) {
+        L.Util.setOptions(this, options);
+        this.geocoder = geocoder(_);
+    },
+
+    setURL: function(_) {
+        this.geocoder.setURL(_);
+        return this;
+    },
+
+    getURL: function() {
+        return this.geocoder.getURL();
+    },
+
+    setID: function(_) {
+        this.geocoder.setID(_);
+        return this;
+    },
+
+    setTileJSON: function(_) {
+        this.geocoder.setTileJSON(_);
+        return this;
+    },
+
+    _toggle: function(e) {
+        if (e) L.DomEvent.stop(e);
+        if (L.DomUtil.hasClass(this._container, 'active')) {
+            L.DomUtil.removeClass(this._container, 'active');
+            this._results.innerHTML = '';
+            this._input.blur();
+        } else {
+            L.DomUtil.addClass(this._container, 'active');
+            this._input.focus();
+            this._input.select();
+        }
+    },
+
+    _closeIfOpen: function(e) {
+        if (L.DomUtil.hasClass(this._container, 'active') &&
+            !this.options.keepOpen) {
+            L.DomUtil.removeClass(this._container, 'active');
+            this._results.innerHTML = '';
+            this._input.blur();
+        }
+    },
+
+    onAdd: function(map) {
+
+        var container = L.DomUtil.create('div', 'leaflet-control-mapbox-geocoder leaflet-bar leaflet-control'),
+            link = L.DomUtil.create('a', 'leaflet-control-mapbox-geocoder-toggle mapbox-icon mapbox-icon-geocoder', container),
+            results = L.DomUtil.create('div', 'leaflet-control-mapbox-geocoder-results', container),
+            wrap = L.DomUtil.create('div', 'leaflet-control-mapbox-geocoder-wrap', container),
+            form = L.DomUtil.create('form', 'leaflet-control-mapbox-geocoder-form', wrap),
+            input  = L.DomUtil.create('input', '', form);
+
+        link.href = '#';
+        link.innerHTML = '&nbsp;';
+
+        input.type = 'text';
+        input.setAttribute('placeholder', 'Search');
+
+        L.DomEvent.addListener(form, 'submit', this._geocode, this);
+        L.DomEvent.disableClickPropagation(container);
+
+        this._map = map;
+        this._results = results;
+        this._input = input;
+        this._form = form;
+
+        if (this.options.keepOpen) {
+            L.DomUtil.addClass(container, 'active');
+        } else {
+            this._map.on('click', this._closeIfOpen, this);
+            L.DomEvent.addListener(link, 'click', this._toggle, this);
+        }
+
+        return container;
+    },
+
+    _geocode: function(e) {
+        L.DomEvent.preventDefault(e);
+        L.DomUtil.addClass(this._container, 'searching');
+
+        var map = this._map;
+        var onload = L.bind(function(err, resp) {
+            L.DomUtil.removeClass(this._container, 'searching');
+            if (err || !resp || !resp.results || !resp.results.length) {
+                this.fire('error', {error: err});
+            } else {
+                this._results.innerHTML = '';
+                if (resp.results.length === 1) {
+                    this.fire('autoselect', { data: resp });
+                    chooseResult(resp.results[0][0]);
+                    this._closeIfOpen();
+                } else {
+                    for (var i = 0, l = Math.min(resp.results.length, 5); i < l; i++) {
+                        var name = [];
+                        for (var j = 0; j < resp.results[i].length; j++) {
+                            if (resp.results[i][j].name) name.push(resp.results[i][j].name);
+                        }
+                        if (!name.length) continue;
+
+                        var r = L.DomUtil.create('a', '', this._results);
+                        r.innerHTML = name.join(', ');
+                        r.href = '#';
+
+                        (L.bind(function(result) {
+                            L.DomEvent.addListener(r, 'click', function(e) {
+                                chooseResult(result[0]);
+                                L.DomEvent.stop(e);
+                                this.fire('select', { data: result });
+                            }, this);
+                        }, this))(resp.results[i]);
+                    }
+                    if (resp.results.length > 5) {
+                        var outof = L.DomUtil.create('span', '', this._results);
+                        outof.innerHTML = 'Top 5 of ' + resp.results.length + '  results';
+                    }
+                }
+                this.fire('found', resp);
+            }
+        }, this);
+
+        var chooseResult = L.bind(function(result) {
+            if (result.bounds) {
+                var _ = result.bounds;
+                this._map.fitBounds(L.latLngBounds([[_[1], _[0]], [_[3], _[2]]]));
+            } else if (result.lat !== undefined && result.lon !== undefined) {
+                this._map.setView([result.lat, result.lon], (map.getZoom() === undefined) ?
+                    this.options.pointZoom :
+                    Math.max(map.getZoom(), this.options.pointZoom));
+            }
+        }, this);
+
+        this.geocoder.query(this._input.value, onload);
+    }
+});
+
+module.exports.GeocoderControl = GeocoderControl;
+
+module.exports.geocoderControl = function(_, options) {
+    return new GeocoderControl(_, options);
+};
+
+},{"./geocoder":25}],20:[function(require,module,exports){
+'use strict';
+
+var url = require('./url');
+
+var ShareControl = L.Control.extend({
+    includes: [require('./load_tilejson')],
+
+    options: {
+        position: 'topleft',
+        url: ''
+    },
+
+    initialize: function(_, options) {
+        L.setOptions(this, options);
+        this._loadTileJSON(_);
+    },
+
+    _setTileJSON: function(json) {
+        this._tilejson = json;
+    },
+
+    onAdd: function(map) {
+        this._map = map;
+        this._url = url;
+
+        var container = L.DomUtil.create('div', 'leaflet-control-mapbox-share leaflet-bar');
+        var link = L.DomUtil.create('a', 'mapbox-share mapbox-icon mapbox-icon-share', container);
+        link.href = '#';
+
+        this._modal = L.DomUtil.create('div', 'mapbox-modal', this._map._container);
+        this._mask = L.DomUtil.create('div', 'mapbox-modal-mask', this._modal);
+        this._content = L.DomUtil.create('div', 'mapbox-modal-content', this._modal);
+
+        L.DomEvent.addListener(link, 'click', this._shareClick, this);
+        L.DomEvent.disableClickPropagation(container);
+
+        this._map.on('mousedown', this._clickOut, this);
+
+        return container;
+    },
+
+    _clickOut: function(e) {
+        if (this._sharing) {
+            L.DomEvent.preventDefault(e);
+            L.DomUtil.removeClass(this._modal, 'active');
+            this._content.innerHTML = '';
+            this._sharing = null;
+            return;
+        }
+    },
+
+    _shareClick: function(e) {
+        L.DomEvent.stop(e);
+        if (this._sharing) return this._clickOut(e);
+
+        var tilejson = this._tilejson || this._map._tilejson || {},
+            url = encodeURIComponent(this.options.url || tilejson.webpage || window.location),
+            name = encodeURIComponent(tilejson.name),
+            image = this._url.base() + tilejson.id + '/' + this._map.getCenter().lng + ',' + this._map.getCenter().lat + ',' + this._map.getZoom() + '/600x600.png',
+            embed = this._url.base() + tilejson.id + '.html?secure',
+            twitter = '//twitter.com/intent/tweet?status=' + name + ' ' + url,
+            facebook = '//www.facebook.com/sharer.php?u=' + url + '&t=' + encodeURIComponent(tilejson.name),
+            pinterest = '//www.pinterest.com/pin/create/button/?url=' + url + '&media=' + image + '&description=' + tilejson.name,
+            share = ("<h3>Share this map</h3>" +
+                    "<div class='mapbox-share-buttons'><a class='mapbox-button mapbox-button-icon mapbox-icon-facebook' target='_blank' href='{{facebook}}'>Facebook</a>" +
+                    "<a class='mapbox-button mapbox-button-icon mapbox-icon-twitter' target='_blank' href='{{twitter}}'>Twitter</a>" +
+                    "<a class='mapbox-button mapbox-button-icon mapbox-icon-pinterest' target='_blank' href='{{pinterest}}'>Pinterest</a></div>")
+                    .replace('{{twitter}}', twitter)
+                    .replace('{{facebook}}', facebook)
+                    .replace('{{pinterest}}', pinterest),
+            embedValue = '<iframe width="100%" height="500px" frameBorder="0" src="{{embed}}"></iframe>'.replace('{{embed}}', embed),
+            embedLabel = 'Copy and paste this <strong>HTML code</strong> into documents to embed this map on web pages.';
+
+        L.DomUtil.addClass(this._modal, 'active');
+
+        this._sharing = L.DomUtil.create('div', 'mapbox-modal-body', this._content);
+        this._sharing.innerHTML = share;
+
+        var input = L.DomUtil.create('input', 'mapbox-embed', this._sharing);
+        input.type = 'text';
+        input.value = embedValue;
+
+        var label = L.DomUtil.create('label', 'mapbox-embed-description', this._sharing);
+        label.innerHTML = embedLabel;
+
+        var close = L.DomUtil.create('a', 'leaflet-popup-close-button', this._sharing);
+        close.href = '#';
+
+        L.DomEvent.disableClickPropagation(this._sharing);
+        L.DomEvent.addListener(close, 'click', this._clickOut, this);
+        L.DomEvent.addListener(input, 'click', function(e) {
+            e.target.focus();
+            e.target.select();
+        });
+    }
+});
+
+module.exports.ShareControl = ShareControl;
+
+module.exports.shareControl = function(_, options) {
+    return new ShareControl(_, options);
+};
+
+},{"./url":29,"./load_tilejson":30}],21:[function(require,module,exports){
+'use strict';
+
+var util = require('./util'),
+    url = require('./url');
+
+var TileLayer = L.TileLayer.extend({
+    includes: [require('./load_tilejson')],
+
+    options: {
+        format: 'png'
+    },
+
+    // http://mapbox.com/developers/api/#image_quality
+    formats: [
+        'png',
+        // PNG
+        'png32', 'png64', 'png128', 'png256',
+        // JPG
+        'jpg70', 'jpg80', 'jpg90'],
+
+    scalePrefix: '@2x.',
+
+    initialize: function(_, options) {
+        L.TileLayer.prototype.initialize.call(this, undefined, options);
+
+        this._tilejson = {};
+
+        if (options && options.detectRetina &&
+            L.Browser.retina && options.retinaVersion) {
+            _ = options.retinaVersion;
+        }
+
+        if (options && options.format) {
+            util.strict_oneof(options.format, this.formats);
+        }
+
+        this._loadTileJSON(_);
+    },
+
+    setFormat: function(_) {
+        util.strict(_, 'string');
+        this.options.format = _;
+        this.redraw();
+        return this;
+    },
+
+    _autoScale: function() {
+        return this.options &&
+            L.Browser.retina &&
+            this.options.detectRetina &&
+            (!this.options.retinaVersion) &&
+            this.options.autoscale;
+    },
+
+    // disable the setUrl function, which is not available on mapbox tilelayers
+    setUrl: null,
+
+    _setTileJSON: function(json) {
+        util.strict(json, 'object');
+
+        L.extend(this.options, {
+            tiles: json.tiles,
+            attribution: json.attribution,
+            minZoom: json.minzoom || 0,
+            maxZoom: json.maxzoom || 18,
+            autoscale: json.autoscale || false,
+            tms: json.scheme === 'tms',
+            bounds: json.bounds && util.lbounds(json.bounds)
+        });
+
+        this._tilejson = json;
+        this.redraw();
+        return this;
+    },
+
+    getTileJSON: function() {
+        return this._tilejson;
+    },
+
+    // this is an exception to mapbox.js naming rules because it's called
+    // by `L.map`
+    getTileUrl: function(tilePoint) {
+        var tiles = this.options.tiles,
+            index = Math.floor(Math.abs(tilePoint.x + tilePoint.y) % tiles.length),
+            url = tiles[index];
+
+        var templated = L.Util.template(url, tilePoint);
+        if (!templated) {
+            return templated;
+        } else {
+            return templated.replace('.png',
+                (this._autoScale() ? this.scalePrefix : '.') + this.options.format);
+        }
+    },
+
+    // TileJSON.TileLayers are added to the map immediately, so that they get
+    // the desired z-index, but do not update until the TileJSON has been loaded.
+    _update: function() {
+        if (this.options.tiles) {
+            L.TileLayer.prototype._update.call(this);
+        }
+    }
+});
+
+module.exports.TileLayer = TileLayer;
+
+module.exports.tileLayer = function(_, options) {
+    return new TileLayer(_, options);
+};
+
+},{"./util":31,"./url":29,"./load_tilejson":30}],23:[function(require,module,exports){
 'use strict';
 
 var util = require('./util'),
@@ -30609,796 +30339,436 @@ module.exports.map = function(element, _, options) {
     return new LMap(element, _, options);
 };
 
-},{"./util":31,"./tile_layer":21,"./feature_layer":18,"./grid_layer":24,"./grid_control":17,"./info_control":22,"./share_control":20,"./legend_control":19,"./load_tilejson":30}],16:[function(require,module,exports){
+},{"./util":31,"./tile_layer":21,"./feature_layer":18,"./grid_layer":24,"./grid_control":17,"./info_control":22,"./share_control":20,"./legend_control":19,"./load_tilejson":30}],24:[function(require,module,exports){
 'use strict';
 
-var geocoder = require('./geocoder');
+var util = require('./util'),
+    url = require('./url'),
+    request = require('./request'),
+    grid = require('./grid');
 
-var GeocoderControl = L.Control.extend({
-    includes: L.Mixin.Events,
+// forked from danzel/L.UTFGrid
+var GridLayer = L.Class.extend({
+    includes: [L.Mixin.Events, require('./load_tilejson')],
 
     options: {
-        position: 'topleft',
-        pointZoom: 16,
-        keepOpen: false
+        template: function() { return ''; }
     },
+
+    _mouseOn: null,
+    _tilejson: {},
+    _cache: {},
 
     initialize: function(_, options) {
         L.Util.setOptions(this, options);
-        this.geocoder = geocoder(_);
+        this._loadTileJSON(_);
     },
 
-    setURL: function(_) {
-        this.geocoder.setURL(_);
+    _setTileJSON: function(json) {
+        util.strict(json, 'object');
+
+        L.extend(this.options, {
+            grids: json.grids,
+            minZoom: json.minzoom,
+            maxZoom: json.maxzoom,
+            bounds: json.bounds && util.lbounds(json.bounds)
+        });
+
+        this._tilejson = json;
+        this._cache = {};
+        this._update();
+
         return this;
     },
 
-    getURL: function() {
-        return this.geocoder.getURL();
+    getTileJSON: function() {
+        return this._tilejson;
     },
 
-    setID: function(_) {
-        this.geocoder.setID(_);
+    active: function() {
+        return !!(this._map && this.options.grids && this.options.grids.length);
+    },
+
+    addTo: function (map) {
+        map.addLayer(this);
         return this;
-    },
-
-    setTileJSON: function(_) {
-        this.geocoder.setTileJSON(_);
-        return this;
-    },
-
-    _toggle: function(e) {
-        if (e) L.DomEvent.stop(e);
-        if (L.DomUtil.hasClass(this._container, 'active')) {
-            L.DomUtil.removeClass(this._container, 'active');
-            this._results.innerHTML = '';
-            this._input.blur();
-        } else {
-            L.DomUtil.addClass(this._container, 'active');
-            this._input.focus();
-            this._input.select();
-        }
-    },
-
-    _closeIfOpen: function(e) {
-        if (L.DomUtil.hasClass(this._container, 'active') &&
-            !this.options.keepOpen) {
-            L.DomUtil.removeClass(this._container, 'active');
-            this._results.innerHTML = '';
-            this._input.blur();
-        }
     },
 
     onAdd: function(map) {
-
-        var container = L.DomUtil.create('div', 'leaflet-control-mapbox-geocoder leaflet-bar leaflet-control'),
-            link = L.DomUtil.create('a', 'leaflet-control-mapbox-geocoder-toggle mapbox-icon mapbox-icon-geocoder', container),
-            results = L.DomUtil.create('div', 'leaflet-control-mapbox-geocoder-results', container),
-            wrap = L.DomUtil.create('div', 'leaflet-control-mapbox-geocoder-wrap', container),
-            form = L.DomUtil.create('form', 'leaflet-control-mapbox-geocoder-form', wrap),
-            input  = L.DomUtil.create('input', '', form);
-
-        link.href = '#';
-        link.innerHTML = '&nbsp;';
-
-        input.type = 'text';
-        input.setAttribute('placeholder', 'Search');
-
-        L.DomEvent.addListener(form, 'submit', this._geocode, this);
-        L.DomEvent.disableClickPropagation(container);
-
         this._map = map;
-        this._results = results;
-        this._input = input;
-        this._form = form;
+        this._update();
 
-        if (this.options.keepOpen) {
-            L.DomUtil.addClass(container, 'active');
-        } else {
-            this._map.on('click', this._closeIfOpen, this);
-            L.DomEvent.addListener(link, 'click', this._toggle, this);
-        }
-
-        return container;
+        this._map
+            .on('click', this._click, this)
+            .on('mousemove', this._move, this)
+            .on('moveend', this._update, this);
     },
 
-    _geocode: function(e) {
-        L.DomEvent.preventDefault(e);
-        L.DomUtil.addClass(this._container, 'searching');
+    onRemove: function() {
+        this._map
+            .off('click', this._click, this)
+            .off('mousemove', this._move, this)
+            .off('moveend', this._update, this);
+    },
 
-        var map = this._map;
-        var onload = L.bind(function(err, resp) {
-            L.DomUtil.removeClass(this._container, 'searching');
-            if (err || !resp || !resp.results || !resp.results.length) {
-                this.fire('error', {error: err});
-            } else {
-                this._results.innerHTML = '';
-                if (resp.results.length === 1) {
-                    this.fire('autoselect', { data: resp });
-                    chooseResult(resp.results[0][0]);
-                    this._closeIfOpen();
-                } else {
-                    for (var i = 0, l = Math.min(resp.results.length, 5); i < l; i++) {
-                        var name = [];
-                        for (var j = 0; j < resp.results[i].length; j++) {
-                            if (resp.results[i][j].name) name.push(resp.results[i][j].name);
-                        }
-                        if (!name.length) continue;
+    getData: function(latlng, callback) {
+        if (!this.active()) return;
 
-                        var r = L.DomUtil.create('a', '', this._results);
-                        r.innerHTML = name.join(', ');
-                        r.href = '#';
+        var map = this._map,
+            point = map.project(latlng.wrap()),
+            tileSize = 256,
+            resolution = 4,
+            x = Math.floor(point.x / tileSize),
+            y = Math.floor(point.y / tileSize),
+            max = map.options.crs.scale(map.getZoom()) / tileSize;
 
-                        (L.bind(function(result) {
-                            L.DomEvent.addListener(r, 'click', function(e) {
-                                chooseResult(result[0]);
-                                L.DomEvent.stop(e);
-                                this.fire('select', { data: result });
-                            }, this);
-                        }, this))(resp.results[i]);
-                    }
-                    if (resp.results.length > 5) {
-                        var outof = L.DomUtil.create('span', '', this._results);
-                        outof.innerHTML = 'Top 5 of ' + resp.results.length + '  results';
-                    }
+        x = (x + max) % max;
+        y = (y + max) % max;
+
+        this._getTile(map.getZoom(), x, y, function(grid) {
+            var gridX = Math.floor((point.x - (x * tileSize)) / resolution),
+                gridY = Math.floor((point.y - (y * tileSize)) / resolution);
+
+            callback(grid(gridX, gridY));
+        });
+
+        return this;
+    },
+
+    _click: function(e) {
+        this.getData(e.latlng, L.bind(function(data) {
+            this.fire('click', {
+                latLng: e.latlng,
+                data: data
+            });
+        }, this));
+    },
+
+    _move: function(e) {
+        this.getData(e.latlng, L.bind(function(data) {
+            if (data !== this._mouseOn) {
+                if (this._mouseOn) {
+                    this.fire('mouseout', {
+                        latLng: e.latlng,
+                        data: this._mouseOn
+                    });
                 }
-                this.fire('found', resp);
-            }
-        }, this);
 
-        var chooseResult = L.bind(function(result) {
-            if (result.bounds) {
-                var _ = result.bounds;
-                this._map.fitBounds(L.latLngBounds([[_[1], _[0]], [_[3], _[2]]]));
-            } else if (result.lat !== undefined && result.lon !== undefined) {
-                this._map.setView([result.lat, result.lon], (map.getZoom() === undefined) ?
-                    this.options.pointZoom :
-                    Math.max(map.getZoom(), this.options.pointZoom));
-            }
-        }, this);
+                this.fire('mouseover', {
+                    latLng: e.latlng,
+                    data: data
+                });
 
-        this.geocoder.query(this._input.value, onload);
+                this._mouseOn = data;
+            } else {
+                this.fire('mousemove', {
+                    latLng: e.latlng,
+                    data: data
+                });
+            }
+        }, this));
+    },
+
+    _getTileURL: function(tilePoint) {
+        var urls = this.options.grids,
+            index = (tilePoint.x + tilePoint.y) % urls.length,
+            url = urls[index];
+
+        return L.Util.template(url, tilePoint);
+    },
+
+    // Load up all required json grid files
+    _update: function() {
+        if (!this.active()) return;
+
+        var bounds = this._map.getPixelBounds(),
+            z = this._map.getZoom(),
+            tileSize = 256;
+
+        if (z > this.options.maxZoom || z < this.options.minZoom) return;
+
+        var nwTilePoint = new L.Point(
+                Math.floor(bounds.min.x / tileSize),
+                Math.floor(bounds.min.y / tileSize)),
+            seTilePoint = new L.Point(
+                Math.floor(bounds.max.x / tileSize),
+                Math.floor(bounds.max.y / tileSize)),
+            max = this._map.options.crs.scale(z) / tileSize;
+
+        for (var x = nwTilePoint.x; x <= seTilePoint.x; x++) {
+            for (var y = nwTilePoint.y; y <= seTilePoint.y; y++) {
+                // x wrapped
+                var xw = (x + max) % max, yw = (y + max) % max;
+                this._getTile(z, xw, yw);
+            }
+        }
+    },
+
+    _getTile: function(z, x, y, callback) {
+        var key = z + '_' + x + '_' + y,
+            tilePoint = L.point(x, y);
+
+        tilePoint.z = z;
+
+        if (!this._tileShouldBeLoaded(tilePoint)) {
+            return;
+        }
+
+        if (key in this._cache) {
+            if (!callback) return;
+
+            if (typeof this._cache[key] === 'function') {
+                callback(this._cache[key]); // Already loaded
+            } else {
+                this._cache[key].push(callback); // Pending
+            }
+
+            return;
+        }
+
+        this._cache[key] = [];
+
+        if (callback) {
+            this._cache[key].push(callback);
+        }
+
+        request(this._getTileURL(tilePoint), L.bind(function(err, json) {
+            var callbacks = this._cache[key];
+            this._cache[key] = grid(json);
+            for (var i = 0; i < callbacks.length; ++i) {
+                callbacks[i](this._cache[key]);
+            }
+        }, this));
+    },
+
+    _tileShouldBeLoaded: function(tilePoint) {
+        if (tilePoint.z > this.options.maxZoom || tilePoint.z < this.options.minZoom) {
+            return false;
+        }
+
+        if (this.options.bounds) {
+            var tileSize = 256,
+                nwPoint = tilePoint.multiplyBy(tileSize),
+                sePoint = nwPoint.add(new L.Point(tileSize, tileSize)),
+                nw = this._map.unproject(nwPoint),
+                se = this._map.unproject(sePoint),
+                bounds = new L.LatLngBounds([nw, se]);
+
+            if (!this.options.bounds.intersects(bounds)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 });
 
-module.exports.GeocoderControl = GeocoderControl;
+module.exports.GridLayer = GridLayer;
 
-module.exports.geocoderControl = function(_, options) {
-    return new GeocoderControl(_, options);
+module.exports.gridLayer = function(_, options) {
+    return new GridLayer(_, options);
 };
 
-},{"./geocoder":25}],18:[function(require,module,exports){
+},{"./util":31,"./url":29,"./request":32,"./grid":33,"./load_tilejson":30}],25:[function(require,module,exports){
 'use strict';
 
 var util = require('./util'),
     urlhelper = require('./url'),
-    request = require('./request'),
-    marker = require('./marker'),
-    simplestyle = require('./simplestyle');
+    request = require('./request');
 
-// # featureLayer
-//
-// A layer of features, loaded from Mapbox or else. Adds the ability
-// to reset features, filter them, and load them from a GeoJSON URL.
-var FeatureLayer = L.FeatureGroup.extend({
-    options: {
-        filter: function() { return true; },
-        sanitizer: require('sanitize-caja'),
-        style: simplestyle.style
-    },
+// Low-level geocoding interface - wraps specific API calls and their
+// return values.
+module.exports = function(_) {
 
-    initialize: function(_, options) {
-        L.setOptions(this, options);
+    var geocoder = {}, url;
 
-        this._layers = {};
+    geocoder.getURL = function(_) {
+        return url;
+    };
 
-        if (typeof _ === 'string') {
-            util.idUrl(_, this);
-        // javascript object of TileJSON data
-        } else if (_ && typeof _ === 'object') {
-            this.setGeoJSON(_);
-        }
-    },
+    geocoder.setURL = function(_) {
+        url = urlhelper.jsonify(_);
+        return geocoder;
+    };
 
-    setGeoJSON: function(_) {
-        this._geojson = _;
-        this.clearLayers();
-        this._initialize(_);
-        return this;
-    },
+    geocoder.setID = function(_) {
+        util.strict(_, 'string');
+        geocoder.setURL(urlhelper.base() + _ + '/geocode/{query}.json');
+        return geocoder;
+    };
 
-    getGeoJSON: function() {
-        return this._geojson;
-    },
+    geocoder.setTileJSON = function(_) {
+        util.strict(_, 'object');
+        geocoder.setURL(_.geocoder);
+        return geocoder;
+    };
 
-    loadURL: function(url) {
-        if (this._request && 'abort' in this._request) this._request.abort();
-        url = urlhelper.jsonify(url);
-        this._request = request(url, L.bind(function(err, json) {
-            this._request = null;
-            if (err && err.type !== 'abort') {
-                util.log('could not load features at ' + url);
-                this.fire('error', {error: err});
-            } else if (json) {
-                this.setGeoJSON(json);
-                this.fire('ready');
+    geocoder.queryURL = function(_) {
+        if (!geocoder.getURL()) throw new Error('Geocoding map ID not set');
+        if (typeof _ !== 'string') {
+            var parts = [];
+            for (var i = 0; i < _.length; i++) {
+                parts[i] = encodeURIComponent(_[i]);
             }
-        }, this));
-        return this;
-    },
-
-    loadID: function(id) {
-        return this.loadURL(urlhelper.base() + id + '/markers.geojson');
-    },
-
-    setFilter: function(_) {
-        this.options.filter = _;
-        if (this._geojson) {
-            this.clearLayers();
-            this._initialize(this._geojson);
+            return L.Util.template(geocoder.getURL(), {
+                query: parts.join(';')
+            });
+        } else {
+            return L.Util.template(geocoder.getURL(), {
+                query: encodeURIComponent(_)
+            });
         }
-        return this;
-    },
+    };
 
-    getFilter: function() {
-        return this.options.filter;
-    },
-
-    _initialize: function(json) {
-        var features = L.Util.isArray(json) ? json : json.features,
-            i, len;
-
-        if (features) {
-            for (i = 0, len = features.length; i < len; i++) {
-                // Only add this if geometry or geometries are set and not null
-                if (features[i].geometries || features[i].geometry || features[i].features) {
-                    this._initialize(features[i]);
+    geocoder.query = function(_, callback) {
+        util.strict(callback, 'function');
+        request(geocoder.queryURL(_), function(err, json) {
+            if (json && (json.length || json.results)) {
+                var res = {
+                    results: json.length ? json : json.results,
+                };
+                if (json.results) {
+                    res.latlng = [json.results[0][0].lat,
+                        json.results[0][0].lon];
                 }
+                if (json.results && json.results[0][0].bounds !== undefined) {
+                    res.bounds = json.results[0][0].bounds;
+                    res.lbounds = util.lbounds(res.bounds);
+                }
+                callback(null, res);
+            } else callback(err || true);
+        });
+
+        return geocoder;
+    };
+
+    // a reverse geocode:
+    //
+    //  geocoder.reverseQuery([80, 20])
+    geocoder.reverseQuery = function(_, callback) {
+        var q = '';
+
+        // sort through different ways people represent lat and lon pairs
+        function normalize(x) {
+            if (x.lat !== undefined && x.lng !== undefined) {
+                return x.lng + ',' + x.lat;
+            } else if (x.lat !== undefined && x.lon !== undefined) {
+                return x.lon + ',' + x.lat;
+            } else {
+                return x[0] + ',' + x[1];
             }
-        } else if (this.options.filter(json)) {
-
-            var layer = L.GeoJSON.geometryToLayer(json, marker.style),
-                popupHtml = marker.createPopup(json, this.options.sanitizer);
-
-            if ('setStyle' in layer) {
-                layer.setStyle(simplestyle.style(json));
-            }
-
-            layer.feature = json;
-
-            if (popupHtml) {
-                layer.bindPopup(popupHtml, {
-                    closeButton: false
-                });
-            }
-
-            this.addLayer(layer);
         }
+
+        if (_.length && _[0].length) {
+            for (var i = 0, pts = []; i < _.length; i++) {
+                pts.push(normalize(_[i]));
+            }
+            q = pts.join(';');
+        } else {
+            q = normalize(_);
+        }
+
+        request(geocoder.queryURL(q), function(err, json) {
+            callback(err, json);
+        });
+
+        return geocoder;
+    };
+
+    if (typeof _ === 'string') {
+        if (_.indexOf('/') == -1) geocoder.setID(_);
+        else geocoder.setURL(_);
+    } else if (typeof _ === 'object') {
+        geocoder.setTileJSON(_);
     }
-});
 
-module.exports.FeatureLayer = FeatureLayer;
-
-module.exports.featureLayer = function(_, options) {
-    return new FeatureLayer(_, options);
+    return geocoder;
 };
 
-},{"./util":31,"./url":29,"./request":32,"./marker":26,"./simplestyle":14,"sanitize-caja":27}],17:[function(require,module,exports){
+},{"./util":31,"./url":29,"./request":32}],31:[function(require,module,exports){
 'use strict';
 
-var util = require('./util'),
-    Mustache = require('mustache');
-
-var GridControl = L.Control.extend({
-
-    options: {
-        pinnable: true,
-        follow: false,
-        sanitizer: require('sanitize-caja'),
-        touchTeaser: true,
-        location: true
+module.exports = {
+    idUrl: function(_, t) {
+        if (_.indexOf('/') == -1) t.loadID(_);
+        else t.loadURL(_);
     },
-
-    _currentContent: '',
-
-    // pinned means that this control is on a feature and the user has likely
-    // clicked. pinned will not become false unless the user clicks off
-    // of the feature onto another or clicks x
-    _pinned: false,
-
-    initialize: function(_, options) {
-        L.Util.setOptions(this, options);
-        util.strict_instance(_, L.Class, 'L.mapbox.gridLayer');
-        this._layer = _;
+    log: function(_) {
+        if (console && typeof console.error === 'function') {
+            console.error(_);
+        }
     },
-
-    setTemplate: function(template) {
-        util.strict(template, 'string');
-        this.options.template = template;
-        return this;
+    strict: function(_, type) {
+        if (typeof _ !== type) {
+            throw new Error('Invalid argument: ' + type + ' expected');
+        }
     },
+    strict_instance: function(_, klass, name) {
+        if (!(_ instanceof klass)) {
+            throw new Error('Invalid argument: ' + name + ' expected');
+        }
+    },
+    strict_oneof: function(_, values) {
+        if (!contains(_, values)) {
+            throw new Error('Invalid argument: ' + _ + ' given, valid values are ' +
+                values.join(', '));
+        }
+    },
+    strip_tags: function(_) {
+        return _.replace(/<[^<]+>/g, '');
+    },
+    lbounds: function(_) {
+        // leaflet-compatible bounds, since leaflet does not do geojson
+        return new L.LatLngBounds([[_[1], _[0]], [_[3], _[2]]]);
+    }
+};
 
-    _template: function(format, data) {
+function contains(item, list) {
+    if (!list || !list.length) return false;
+    for (var i = 0; i < list.length; i++) {
+        if (list[i] == item) return true;
+    }
+    return false;
+}
+
+},{}],33:[function(require,module,exports){
+'use strict';
+
+function utfDecode(c) {
+    if (c >= 93) c--;
+    if (c >= 35) c--;
+    return c - 32;
+}
+
+module.exports = function(data) {
+    return function(x, y) {
         if (!data) return;
-        var template = this.options.template || this._layer.getTileJSON().template;
-        if (template) {
-            var d = {};
-            d['__' + format + '__'] = true;
-            return this.options.sanitizer(
-                Mustache.to_html(template, L.extend(d, data)));
-        }
-    },
-
-    // change the content of the tooltip HTML if it has changed, otherwise
-    // noop
-    _show: function(content, o) {
-        if (content === this._currentContent) return;
-
-        this._currentContent = content;
-
-        if (this.options.follow) {
-            this._popup.setContent(content)
-                .setLatLng(o.latLng);
-            if (this._map._popup !== this._popup) this._popup.openOn(this._map);
-        } else {
-            this._container.style.display = 'block';
-            this._contentWrapper.innerHTML = content;
-        }
-    },
-
-    hide: function() {
-        this._pinned = false;
-        this._currentContent = '';
-
-        this._map.closePopup();
-        this._container.style.display = 'none';
-        this._contentWrapper.innerHTML = '';
-
-        L.DomUtil.removeClass(this._container, 'closable');
-
-        return this;
-    },
-
-    _mouseover: function(o) {
-        if (o.data) {
-            L.DomUtil.addClass(this._map._container, 'map-clickable');
-        } else {
-            L.DomUtil.removeClass(this._map._container, 'map-clickable');
-        }
-
-        if (this._pinned) return;
-
-        var content = this._template('teaser', o.data);
-        if (content) {
-            this._show(content, o);
-        } else {
-            this.hide();
-        }
-    },
-
-    _mousemove: function(o) {
-        if (this._pinned) return;
-        if (!this.options.follow) return;
-
-        this._popup.setLatLng(o.latLng);
-    },
-
-    _navigateTo: function(url) {
-        window.top.location.href = url;
-    },
-
-    _click: function(o) {
-
-        var location_formatted = this._template('location', o.data);
-        if (this.options.location && location_formatted &&
-            location_formatted.search(/^https?:/) === 0) {
-            return this._navigateTo(this._template('location', o.data));
-        }
-
-        if (!this.options.pinnable) return;
-
-        var content = this._template('full', o.data);
-
-        if (!content && this.options.touchTeaser && L.Browser.touch) {
-            content = this._template('teaser', o.data);
-        }
-
-        if (content) {
-            L.DomUtil.addClass(this._container, 'closable');
-            this._pinned = true;
-            this._show(content, o);
-        } else if (this._pinned) {
-            L.DomUtil.removeClass(this._container, 'closable');
-            this._pinned = false;
-            this.hide();
-        }
-    },
-
-    _onPopupClose: function() {
-        this._currentContent = null;
-        this._pinned = false;
-    },
-
-    _createClosebutton: function(container, fn) {
-        var link = L.DomUtil.create('a', 'close', container);
-
-        link.innerHTML = 'close';
-        link.href = '#';
-        link.title = 'close';
-
-        L.DomEvent
-            .on(link, 'click', L.DomEvent.stopPropagation)
-            .on(link, 'mousedown', L.DomEvent.stopPropagation)
-            .on(link, 'dblclick', L.DomEvent.stopPropagation)
-            .on(link, 'click', L.DomEvent.preventDefault)
-            .on(link, 'click', fn, this);
-
-        return link;
-    },
-
-    onAdd: function(map) {
-        this._map = map;
-
-        var className = 'leaflet-control-grid map-tooltip',
-            container = L.DomUtil.create('div', className),
-            contentWrapper = L.DomUtil.create('div', 'map-tooltip-content');
-
-        // hide the container element initially
-        container.style.display = 'none';
-        this._createClosebutton(container, this.hide);
-        container.appendChild(contentWrapper);
-
-        this._contentWrapper = contentWrapper;
-        this._popup = new L.Popup({ autoPan: false, closeOnClick: false });
-
-        map.on('popupclose', this._onPopupClose, this);
-
-        L.DomEvent
-            .disableClickPropagation(container)
-            // allow people to scroll tooltips with mousewheel
-            .addListener(container, 'mousewheel', L.DomEvent.stopPropagation);
-
-        this._layer
-            .on('mouseover', this._mouseover, this)
-            .on('mousemove', this._mousemove, this)
-            .on('click', this._click, this);
-
-        return container;
-    },
-
-    onRemove: function (map) {
-
-        map.off('popupclose', this._onPopupClose, this);
-
-        this._layer
-            .off('mouseover', this._mouseover, this)
-            .off('mousemove', this._mousemove, this)
-            .off('click', this._click, this);
-    }
-});
-
-module.exports.GridControl = GridControl;
-
-module.exports.gridControl = function(_, options) {
-    return new GridControl(_, options);
+        var idx = utfDecode(data.grid[y].charCodeAt(x)),
+            key = data.keys[idx];
+        return data.data[key];
+    };
 };
 
-},{"./util":31,"mustache":28,"sanitize-caja":27}],19:[function(require,module,exports){
-'use strict';
+},{}],27:[function(require,module,exports){
+var html_sanitize = require('./sanitizer-bundle.js');
 
-var LegendControl = L.Control.extend({
-
-    options: {
-        position: 'bottomright',
-        sanitizer: require('sanitize-caja')
-    },
-
-    initialize: function(options) {
-        L.setOptions(this, options);
-        this._legends = {};
-    },
-
-    onAdd: function(map) {
-        this._container = L.DomUtil.create('div', 'map-legends wax-legends');
-        L.DomEvent.disableClickPropagation(this._container);
-
-        this._update();
-
-        return this._container;
-    },
-
-    addLegend: function(text) {
-        if (!text) { return this; }
-
-        if (!this._legends[text]) {
-            this._legends[text] = 0;
-        }
-
-        this._legends[text]++;
-        return this._update();
-    },
-
-    removeLegend: function(text) {
-        if (!text) { return this; }
-        if (this._legends[text]) this._legends[text]--;
-        return this._update();
-    },
-
-    _update: function() {
-        if (!this._map) { return this; }
-
-        this._container.innerHTML = '';
-        var hide = 'none';
-
-        for (var i in this._legends) {
-            if (this._legends.hasOwnProperty(i) && this._legends[i]) {
-                var div = L.DomUtil.create('div', 'map-legend wax-legend', this._container);
-                div.innerHTML = this.options.sanitizer(i);
-                hide = 'block';
-            }
-        }
-
-        // hide the control entirely unless there is at least one legend;
-        // otherwise there will be a small grey blemish on the map.
-        this._container.style.display = hide;
-
-        return this;
-    }
-});
-
-module.exports.LegendControl = LegendControl;
-
-module.exports.legendControl = function(options) {
-    return new LegendControl(options);
+module.exports = function(_) {
+    if (!_) return '';
+    return html_sanitize(_, cleanUrl, cleanId);
 };
 
-},{"sanitize-caja":27}],22:[function(require,module,exports){
-'use strict';
-
-var InfoControl = L.Control.extend({
-    options: {
-        position: 'bottomright',
-        sanitizer: require('sanitize-caja')
-    },
-
-    initialize: function(options) {
-        L.setOptions(this, options);
-        this._info = {};
-    },
-
-    onAdd: function(map) {
-        this._container = L.DomUtil.create('div', 'mapbox-control-info mapbox-small');
-        this._content = L.DomUtil.create('div', 'map-info-container', this._container);
-
-        var link = L.DomUtil.create('a', 'mapbox-info-toggle mapbox-icon mapbox-icon-info', this._container);
-        link.href = '#';
-
-        L.DomEvent.addListener(link, 'click', this._showInfo, this);
-        L.DomEvent.disableClickPropagation(this._container);
-
-        for (var i in map._layers) {
-            if (map._layers[i].getAttribution) {
-                this.addInfo(map._layers[i].getAttribution());
-            }
-        }
-
-        map
-            .on('layeradd', this._onLayerAdd, this)
-            .on('layerremove', this._onLayerRemove, this);
-
-        this._update();
-        return this._container;
-    },
-
-    onRemove: function(map) {
-        map
-            .off('layeradd', this._onLayerAdd, this)
-            .off('layerremove', this._onLayerRemove, this);
-    },
-
-    addInfo: function(text) {
-        if (!text) return this;
-        if (!this._info[text]) this._info[text] = 0;
-        this._info[text] = true;
-        return this._update();
-    },
-
-    removeInfo: function (text) {
-        if (!text) return this;
-        if (this._info[text]) this._info[text] = false;
-        return this._update();
-    },
-
-    _showInfo: function(e) {
-        L.DomEvent.preventDefault(e);
-        if (this._active === true) return this._hidecontent();
-
-        L.DomUtil.addClass(this._container, 'active');
-        this._active = true;
-        this._update();
-    },
-
-    _hidecontent: function() {
-        this._content.innerHTML = '';
-        this._active = false;
-        L.DomUtil.removeClass(this._container, 'active');
-        return;
-    },
-
-    _update: function() {
-        if (!this._map) { return this; }
-        this._content.innerHTML = '';
-        var hide = 'none';
-        var info = [];
-
-        for (var i in this._info) {
-            if (this._info.hasOwnProperty(i) && this._info[i]) {
-                info.push(this.options.sanitizer(i));
-                hide = 'block';
-            }
-        }
-
-        this._content.innerHTML += info.join(' | ');
-
-        // If there are no results in _info then hide this.
-        this._container.style.display = hide;
-        return this;
-    },
-
-    _onLayerAdd: function(e) {
-        if (e.layer.getAttribution && e.layer.getAttribution()) {
-            this.addInfo(e.layer.getAttribution());
-        } else if ('on' in e.layer && e.layer.getAttribution) {
-            e.layer.on('ready', L.bind(function() {
-                this.addInfo(e.layer.getAttribution());
-            }, this));
-        }
-    },
-
-    _onLayerRemove: function (e) {
-        if (e.layer.getAttribution) {
-            this.removeInfo(e.layer.getAttribution());
-        }
+// https://bugzilla.mozilla.org/show_bug.cgi?id=255107
+function cleanUrl(url) {
+    'use strict';
+    if (/^https?/.test(url.getScheme())) return url.toString();
+    if ('data' == url.getScheme() && /^image/.test(url.getPath())) {
+        return url.toString();
     }
-});
-
-module.exports.InfoControl = InfoControl;
-
-module.exports.infoControl = function(options) {
-    return new InfoControl(options);
-};
-
-},{"sanitize-caja":27}],29:[function(require,module,exports){
-'use strict';
-
-var config = require('./config');
-
-// Return the base url of a specific version of Mapbox's API.
-//
-// `hash`, if provided must be a number and is used to distribute requests
-// against multiple `CNAME`s in order to avoid connection limits in browsers
-module.exports = {
-    isSSL: function() {
-        return 'https:' === document.location.protocol || config.FORCE_HTTPS;
-    },
-    base: function() {
-        // By default, use public HTTP urls
-        // Support HTTPS if the user has specified HTTPS urls to use, and this
-        // page is under HTTPS
-        return (this.isSSL() ? config.HTTPS_URLS : config.HTTP_URLS)[0];
-    },
-    // Requests that contain URLs need a secure flag appended
-    // to their URLs so that the server knows to send SSL-ified
-    // resource references.
-    secureFlag: function(url) {
-        if (!this.isSSL()) return url;
-        else if (url.match(/(\?|&)secure/)) return url;
-        else if (url.indexOf('?') !== -1) return url + '&secure';
-        else return url + '?secure';
-    },
-    // Convert a JSONP url to a JSON URL. (Mapbox TileJSON sometimes hardcodes JSONP.)
-    jsonify: function(url) {
-        return url.replace(/\.(geo)?jsonp(?=$|\?)/, '.$1json');
-    }
-};
-
-},{"./config":15}],26:[function(require,module,exports){
-'use strict';
-
-var url = require('./url'),
-    util = require('./util'),
-    sanitize = require('sanitize-caja');
-
-// mapbox-related markers functionality
-// provide an icon from mapbox's simple-style spec and hosted markers
-// service
-function icon(fp) {
-    fp = fp || {};
-
-    var sizes = {
-            small: [20, 50],
-            medium: [30, 70],
-            large: [35, 90]
-        },
-        size = fp['marker-size'] || 'medium',
-        symbol = (fp['marker-symbol']) ? '-' + fp['marker-symbol'] : '',
-        color = (fp['marker-color'] || '7e7e7e').replace('#', '');
-
-    return L.icon({
-        iconUrl: url.base() + 'marker/' +
-            'pin-' + size.charAt(0) + symbol + '+' + color +
-            // detect and use retina markers, which are x2 resolution
-            ((L.Browser.retina) ? '@2x' : '') + '.png',
-        iconSize: sizes[size],
-        iconAnchor: [sizes[size][0] / 2, sizes[size][1] / 2],
-        popupAnchor: [0, -sizes[size][1] / 2]
-    });
 }
 
-// a factory that provides markers for Leaflet from Mapbox's
-// [simple-style specification](https://github.com/mapbox/simplestyle-spec)
-// and [Markers API](http://mapbox.com/developers/api/#markers).
-function style(f, latlon) {
-    return L.marker(latlon, {
-        icon: icon(f.properties),
-        title: util.strip_tags(
-            sanitize((f.properties && f.properties.title) || ''))
-    });
-}
+function cleanId(id) { return id; }
 
-// Sanitize and format properties of a GeoJSON Feature object in order
-// to form the HTML string used as the argument for `L.createPopup`
-function createPopup(f, sanitizer) {
-    if (!f || !f.properties) return '';
-    var popup = '';
-
-    if (f.properties.title) {
-        popup += '<div class="marker-title">' + f.properties.title + '</div>';
-    }
-
-    if (f.properties.description) {
-        popup += '<div class="marker-description">' + f.properties.description + '</div>';
-    }
-
-    return (sanitizer || sanitize)(popup);
-}
-
-module.exports = {
-    icon: icon,
-    style: style,
-    createPopup: createPopup
-};
-
-},{"./url":29,"./util":31,"sanitize-caja":27}],30:[function(require,module,exports){
-'use strict';
-
-var request = require('./request'),
-    url = require('./url'),
-    util = require('./util');
-
-module.exports = {
-    _loadTileJSON: function(_) {
-        if (typeof _ === 'string') {
-            if (_.indexOf('/') == -1) {
-                _ = url.base() + _ + '.json';
-            }
-
-            request(url.secureFlag(_), L.bind(function(err, json) {
-                if (err) {
-                    util.log('could not load TileJSON at ' + _);
-                    this.fire('error', {error: err});
-                } else if (json) {
-                    this._setTileJSON(json);
-                    this.fire('ready');
-                }
-            }, this));
-        } else if (_ && typeof _ === 'object') {
-            this._setTileJSON(_);
-        }
-    }
-};
-
-},{"./request":32,"./url":29,"./util":31}],34:[function(require,module,exports){
+},{"./sanitizer-bundle.js":34}],34:[function(require,module,exports){
 (function(){
 // Copyright (C) 2010 Google Inc.
 //
@@ -33847,7 +33217,638 @@ if (typeof module !== 'undefined') {
 }
 
 })()
-},{}],32:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
+'use strict';
+
+var util = require('./util'),
+    Mustache = require('mustache');
+
+var GridControl = L.Control.extend({
+
+    options: {
+        pinnable: true,
+        follow: false,
+        sanitizer: require('sanitize-caja'),
+        touchTeaser: true,
+        location: true
+    },
+
+    _currentContent: '',
+
+    // pinned means that this control is on a feature and the user has likely
+    // clicked. pinned will not become false unless the user clicks off
+    // of the feature onto another or clicks x
+    _pinned: false,
+
+    initialize: function(_, options) {
+        L.Util.setOptions(this, options);
+        util.strict_instance(_, L.Class, 'L.mapbox.gridLayer');
+        this._layer = _;
+    },
+
+    setTemplate: function(template) {
+        util.strict(template, 'string');
+        this.options.template = template;
+        return this;
+    },
+
+    _template: function(format, data) {
+        if (!data) return;
+        var template = this.options.template || this._layer.getTileJSON().template;
+        if (template) {
+            var d = {};
+            d['__' + format + '__'] = true;
+            return this.options.sanitizer(
+                Mustache.to_html(template, L.extend(d, data)));
+        }
+    },
+
+    // change the content of the tooltip HTML if it has changed, otherwise
+    // noop
+    _show: function(content, o) {
+        if (content === this._currentContent) return;
+
+        this._currentContent = content;
+
+        if (this.options.follow) {
+            this._popup.setContent(content)
+                .setLatLng(o.latLng);
+            if (this._map._popup !== this._popup) this._popup.openOn(this._map);
+        } else {
+            this._container.style.display = 'block';
+            this._contentWrapper.innerHTML = content;
+        }
+    },
+
+    hide: function() {
+        this._pinned = false;
+        this._currentContent = '';
+
+        this._map.closePopup();
+        this._container.style.display = 'none';
+        this._contentWrapper.innerHTML = '';
+
+        L.DomUtil.removeClass(this._container, 'closable');
+
+        return this;
+    },
+
+    _mouseover: function(o) {
+        if (o.data) {
+            L.DomUtil.addClass(this._map._container, 'map-clickable');
+        } else {
+            L.DomUtil.removeClass(this._map._container, 'map-clickable');
+        }
+
+        if (this._pinned) return;
+
+        var content = this._template('teaser', o.data);
+        if (content) {
+            this._show(content, o);
+        } else {
+            this.hide();
+        }
+    },
+
+    _mousemove: function(o) {
+        if (this._pinned) return;
+        if (!this.options.follow) return;
+
+        this._popup.setLatLng(o.latLng);
+    },
+
+    _navigateTo: function(url) {
+        window.top.location.href = url;
+    },
+
+    _click: function(o) {
+
+        var location_formatted = this._template('location', o.data);
+        if (this.options.location && location_formatted &&
+            location_formatted.search(/^https?:/) === 0) {
+            return this._navigateTo(this._template('location', o.data));
+        }
+
+        if (!this.options.pinnable) return;
+
+        var content = this._template('full', o.data);
+
+        if (!content && this.options.touchTeaser && L.Browser.touch) {
+            content = this._template('teaser', o.data);
+        }
+
+        if (content) {
+            L.DomUtil.addClass(this._container, 'closable');
+            this._pinned = true;
+            this._show(content, o);
+        } else if (this._pinned) {
+            L.DomUtil.removeClass(this._container, 'closable');
+            this._pinned = false;
+            this.hide();
+        }
+    },
+
+    _onPopupClose: function() {
+        this._currentContent = null;
+        this._pinned = false;
+    },
+
+    _createClosebutton: function(container, fn) {
+        var link = L.DomUtil.create('a', 'close', container);
+
+        link.innerHTML = 'close';
+        link.href = '#';
+        link.title = 'close';
+
+        L.DomEvent
+            .on(link, 'click', L.DomEvent.stopPropagation)
+            .on(link, 'mousedown', L.DomEvent.stopPropagation)
+            .on(link, 'dblclick', L.DomEvent.stopPropagation)
+            .on(link, 'click', L.DomEvent.preventDefault)
+            .on(link, 'click', fn, this);
+
+        return link;
+    },
+
+    onAdd: function(map) {
+        this._map = map;
+
+        var className = 'leaflet-control-grid map-tooltip',
+            container = L.DomUtil.create('div', className),
+            contentWrapper = L.DomUtil.create('div', 'map-tooltip-content');
+
+        // hide the container element initially
+        container.style.display = 'none';
+        this._createClosebutton(container, this.hide);
+        container.appendChild(contentWrapper);
+
+        this._contentWrapper = contentWrapper;
+        this._popup = new L.Popup({ autoPan: false, closeOnClick: false });
+
+        map.on('popupclose', this._onPopupClose, this);
+
+        L.DomEvent
+            .disableClickPropagation(container)
+            // allow people to scroll tooltips with mousewheel
+            .addListener(container, 'mousewheel', L.DomEvent.stopPropagation);
+
+        this._layer
+            .on('mouseover', this._mouseover, this)
+            .on('mousemove', this._mousemove, this)
+            .on('click', this._click, this);
+
+        return container;
+    },
+
+    onRemove: function (map) {
+
+        map.off('popupclose', this._onPopupClose, this);
+
+        this._layer
+            .off('mouseover', this._mouseover, this)
+            .off('mousemove', this._mousemove, this)
+            .off('click', this._click, this);
+    }
+});
+
+module.exports.GridControl = GridControl;
+
+module.exports.gridControl = function(_, options) {
+    return new GridControl(_, options);
+};
+
+},{"./util":31,"sanitize-caja":27,"mustache":28}],29:[function(require,module,exports){
+'use strict';
+
+var config = require('./config');
+
+// Return the base url of a specific version of Mapbox's API.
+//
+// `hash`, if provided must be a number and is used to distribute requests
+// against multiple `CNAME`s in order to avoid connection limits in browsers
+module.exports = {
+    isSSL: function() {
+        return 'https:' === document.location.protocol || config.FORCE_HTTPS;
+    },
+    base: function() {
+        // By default, use public HTTP urls
+        // Support HTTPS if the user has specified HTTPS urls to use, and this
+        // page is under HTTPS
+        return (this.isSSL() ? config.HTTPS_URLS : config.HTTP_URLS)[0];
+    },
+    // Requests that contain URLs need a secure flag appended
+    // to their URLs so that the server knows to send SSL-ified
+    // resource references.
+    secureFlag: function(url) {
+        if (!this.isSSL()) return url;
+        else if (url.match(/(\?|&)secure/)) return url;
+        else if (url.indexOf('?') !== -1) return url + '&secure';
+        else return url + '?secure';
+    },
+    // Convert a JSONP url to a JSON URL. (Mapbox TileJSON sometimes hardcodes JSONP.)
+    jsonify: function(url) {
+        return url.replace(/\.(geo)?jsonp(?=$|\?)/, '.$1json');
+    }
+};
+
+},{"./config":15}],18:[function(require,module,exports){
+'use strict';
+
+var util = require('./util'),
+    urlhelper = require('./url'),
+    request = require('./request'),
+    marker = require('./marker'),
+    simplestyle = require('./simplestyle');
+
+// # featureLayer
+//
+// A layer of features, loaded from Mapbox or else. Adds the ability
+// to reset features, filter them, and load them from a GeoJSON URL.
+var FeatureLayer = L.FeatureGroup.extend({
+    options: {
+        filter: function() { return true; },
+        sanitizer: require('sanitize-caja'),
+        style: simplestyle.style
+    },
+
+    initialize: function(_, options) {
+        L.setOptions(this, options);
+
+        this._layers = {};
+
+        if (typeof _ === 'string') {
+            util.idUrl(_, this);
+        // javascript object of TileJSON data
+        } else if (_ && typeof _ === 'object') {
+            this.setGeoJSON(_);
+        }
+    },
+
+    setGeoJSON: function(_) {
+        this._geojson = _;
+        this.clearLayers();
+        this._initialize(_);
+        return this;
+    },
+
+    getGeoJSON: function() {
+        return this._geojson;
+    },
+
+    loadURL: function(url) {
+        if (this._request && 'abort' in this._request) this._request.abort();
+        url = urlhelper.jsonify(url);
+        this._request = request(url, L.bind(function(err, json) {
+            this._request = null;
+            if (err && err.type !== 'abort') {
+                util.log('could not load features at ' + url);
+                this.fire('error', {error: err});
+            } else if (json) {
+                this.setGeoJSON(json);
+                this.fire('ready');
+            }
+        }, this));
+        return this;
+    },
+
+    loadID: function(id) {
+        return this.loadURL(urlhelper.base() + id + '/markers.geojson');
+    },
+
+    setFilter: function(_) {
+        this.options.filter = _;
+        if (this._geojson) {
+            this.clearLayers();
+            this._initialize(this._geojson);
+        }
+        return this;
+    },
+
+    getFilter: function() {
+        return this.options.filter;
+    },
+
+    _initialize: function(json) {
+        var features = L.Util.isArray(json) ? json : json.features,
+            i, len;
+
+        if (features) {
+            for (i = 0, len = features.length; i < len; i++) {
+                // Only add this if geometry or geometries are set and not null
+                if (features[i].geometries || features[i].geometry || features[i].features) {
+                    this._initialize(features[i]);
+                }
+            }
+        } else if (this.options.filter(json)) {
+
+            var layer = L.GeoJSON.geometryToLayer(json, marker.style),
+                popupHtml = marker.createPopup(json, this.options.sanitizer);
+
+            if ('setStyle' in layer) {
+                layer.setStyle(simplestyle.style(json));
+            }
+
+            layer.feature = json;
+
+            if (popupHtml) {
+                layer.bindPopup(popupHtml, {
+                    closeButton: false
+                });
+            }
+
+            this.addLayer(layer);
+        }
+    }
+});
+
+module.exports.FeatureLayer = FeatureLayer;
+
+module.exports.featureLayer = function(_, options) {
+    return new FeatureLayer(_, options);
+};
+
+},{"./util":31,"./url":29,"./request":32,"./marker":26,"./simplestyle":14,"sanitize-caja":27}],19:[function(require,module,exports){
+'use strict';
+
+var LegendControl = L.Control.extend({
+
+    options: {
+        position: 'bottomright',
+        sanitizer: require('sanitize-caja')
+    },
+
+    initialize: function(options) {
+        L.setOptions(this, options);
+        this._legends = {};
+    },
+
+    onAdd: function(map) {
+        this._container = L.DomUtil.create('div', 'map-legends wax-legends');
+        L.DomEvent.disableClickPropagation(this._container);
+
+        this._update();
+
+        return this._container;
+    },
+
+    addLegend: function(text) {
+        if (!text) { return this; }
+
+        if (!this._legends[text]) {
+            this._legends[text] = 0;
+        }
+
+        this._legends[text]++;
+        return this._update();
+    },
+
+    removeLegend: function(text) {
+        if (!text) { return this; }
+        if (this._legends[text]) this._legends[text]--;
+        return this._update();
+    },
+
+    _update: function() {
+        if (!this._map) { return this; }
+
+        this._container.innerHTML = '';
+        var hide = 'none';
+
+        for (var i in this._legends) {
+            if (this._legends.hasOwnProperty(i) && this._legends[i]) {
+                var div = L.DomUtil.create('div', 'map-legend wax-legend', this._container);
+                div.innerHTML = this.options.sanitizer(i);
+                hide = 'block';
+            }
+        }
+
+        // hide the control entirely unless there is at least one legend;
+        // otherwise there will be a small grey blemish on the map.
+        this._container.style.display = hide;
+
+        return this;
+    }
+});
+
+module.exports.LegendControl = LegendControl;
+
+module.exports.legendControl = function(options) {
+    return new LegendControl(options);
+};
+
+},{"sanitize-caja":27}],30:[function(require,module,exports){
+'use strict';
+
+var request = require('./request'),
+    url = require('./url'),
+    util = require('./util');
+
+module.exports = {
+    _loadTileJSON: function(_) {
+        if (typeof _ === 'string') {
+            if (_.indexOf('/') == -1) {
+                _ = url.base() + _ + '.json';
+            }
+
+            request(url.secureFlag(_), L.bind(function(err, json) {
+                if (err) {
+                    util.log('could not load TileJSON at ' + _);
+                    this.fire('error', {error: err});
+                } else if (json) {
+                    this._setTileJSON(json);
+                    this.fire('ready');
+                }
+            }, this));
+        } else if (_ && typeof _ === 'object') {
+            this._setTileJSON(_);
+        }
+    }
+};
+
+},{"./request":32,"./url":29,"./util":31}],22:[function(require,module,exports){
+'use strict';
+
+var InfoControl = L.Control.extend({
+    options: {
+        position: 'bottomright',
+        sanitizer: require('sanitize-caja')
+    },
+
+    initialize: function(options) {
+        L.setOptions(this, options);
+        this._info = {};
+    },
+
+    onAdd: function(map) {
+        this._container = L.DomUtil.create('div', 'mapbox-control-info mapbox-small');
+        this._content = L.DomUtil.create('div', 'map-info-container', this._container);
+
+        var link = L.DomUtil.create('a', 'mapbox-info-toggle mapbox-icon mapbox-icon-info', this._container);
+        link.href = '#';
+
+        L.DomEvent.addListener(link, 'click', this._showInfo, this);
+        L.DomEvent.disableClickPropagation(this._container);
+
+        for (var i in map._layers) {
+            if (map._layers[i].getAttribution) {
+                this.addInfo(map._layers[i].getAttribution());
+            }
+        }
+
+        map
+            .on('layeradd', this._onLayerAdd, this)
+            .on('layerremove', this._onLayerRemove, this);
+
+        this._update();
+        return this._container;
+    },
+
+    onRemove: function(map) {
+        map
+            .off('layeradd', this._onLayerAdd, this)
+            .off('layerremove', this._onLayerRemove, this);
+    },
+
+    addInfo: function(text) {
+        if (!text) return this;
+        if (!this._info[text]) this._info[text] = 0;
+        this._info[text] = true;
+        return this._update();
+    },
+
+    removeInfo: function (text) {
+        if (!text) return this;
+        if (this._info[text]) this._info[text] = false;
+        return this._update();
+    },
+
+    _showInfo: function(e) {
+        L.DomEvent.preventDefault(e);
+        if (this._active === true) return this._hidecontent();
+
+        L.DomUtil.addClass(this._container, 'active');
+        this._active = true;
+        this._update();
+    },
+
+    _hidecontent: function() {
+        this._content.innerHTML = '';
+        this._active = false;
+        L.DomUtil.removeClass(this._container, 'active');
+        return;
+    },
+
+    _update: function() {
+        if (!this._map) { return this; }
+        this._content.innerHTML = '';
+        var hide = 'none';
+        var info = [];
+
+        for (var i in this._info) {
+            if (this._info.hasOwnProperty(i) && this._info[i]) {
+                info.push(this.options.sanitizer(i));
+                hide = 'block';
+            }
+        }
+
+        this._content.innerHTML += info.join(' | ');
+
+        // If there are no results in _info then hide this.
+        this._container.style.display = hide;
+        return this;
+    },
+
+    _onLayerAdd: function(e) {
+        if (e.layer.getAttribution && e.layer.getAttribution()) {
+            this.addInfo(e.layer.getAttribution());
+        } else if ('on' in e.layer && e.layer.getAttribution) {
+            e.layer.on('ready', L.bind(function() {
+                this.addInfo(e.layer.getAttribution());
+            }, this));
+        }
+    },
+
+    _onLayerRemove: function (e) {
+        if (e.layer.getAttribution) {
+            this.removeInfo(e.layer.getAttribution());
+        }
+    }
+});
+
+module.exports.InfoControl = InfoControl;
+
+module.exports.infoControl = function(options) {
+    return new InfoControl(options);
+};
+
+},{"sanitize-caja":27}],26:[function(require,module,exports){
+'use strict';
+
+var url = require('./url'),
+    util = require('./util'),
+    sanitize = require('sanitize-caja');
+
+// mapbox-related markers functionality
+// provide an icon from mapbox's simple-style spec and hosted markers
+// service
+function icon(fp) {
+    fp = fp || {};
+
+    var sizes = {
+            small: [20, 50],
+            medium: [30, 70],
+            large: [35, 90]
+        },
+        size = fp['marker-size'] || 'medium',
+        symbol = (fp['marker-symbol']) ? '-' + fp['marker-symbol'] : '',
+        color = (fp['marker-color'] || '7e7e7e').replace('#', '');
+
+    return L.icon({
+        iconUrl: url.base() + 'marker/' +
+            'pin-' + size.charAt(0) + symbol + '+' + color +
+            // detect and use retina markers, which are x2 resolution
+            ((L.Browser.retina) ? '@2x' : '') + '.png',
+        iconSize: sizes[size],
+        iconAnchor: [sizes[size][0] / 2, sizes[size][1] / 2],
+        popupAnchor: [0, -sizes[size][1] / 2]
+    });
+}
+
+// a factory that provides markers for Leaflet from Mapbox's
+// [simple-style specification](https://github.com/mapbox/simplestyle-spec)
+// and [Markers API](http://mapbox.com/developers/api/#markers).
+function style(f, latlon) {
+    return L.marker(latlon, {
+        icon: icon(f.properties),
+        title: util.strip_tags(
+            sanitize((f.properties && f.properties.title) || ''))
+    });
+}
+
+// Sanitize and format properties of a GeoJSON Feature object in order
+// to form the HTML string used as the argument for `L.createPopup`
+function createPopup(f, sanitizer) {
+    if (!f || !f.properties) return '';
+    var popup = '';
+
+    if (f.properties.title) {
+        popup += '<div class="marker-title">' + f.properties.title + '</div>';
+    }
+
+    if (f.properties.description) {
+        popup += '<div class="marker-description">' + f.properties.description + '</div>';
+    }
+
+    return (sanitizer || sanitize)(popup);
+}
+
+module.exports = {
+    icon: icon,
+    style: style,
+    createPopup: createPopup
+};
+
+},{"./url":29,"./util":31,"sanitize-caja":27}],32:[function(require,module,exports){
 'use strict';
 
 var corslite = require('corslite'),
@@ -33872,7 +33873,109 @@ module.exports = function(url, callback) {
     }
 };
 
-},{"./util":31,"json3":35,"corslite":36}],35:[function(require,module,exports){
+},{"./util":31,"corslite":35,"json3":36}],35:[function(require,module,exports){
+function xhr(url, callback, cors) {
+    var sent = false;
+
+    if (typeof window.XMLHttpRequest === 'undefined') {
+        return callback(Error('Browser not supported'));
+    }
+
+    if (typeof cors === 'undefined') {
+        var m = url.match(/^\s*https?:\/\/[^\/]*/);
+        cors = m && (m[0] !== location.protocol + '//' + location.domain +
+                (location.port ? ':' + location.port : ''));
+    }
+
+    var x;
+
+    function isSuccessful(status) {
+        return status >= 200 && status < 300 || status === 304;
+    }
+
+    if (cors && (
+        // IE7-9 Quirks & Compatibility
+        typeof window.XDomainRequest === 'object' ||
+        // IE9 Standards mode
+        typeof window.XDomainRequest === 'function'
+    )) {
+        // IE8-10
+        x = new window.XDomainRequest();
+
+        // Ensure callback is never called synchronously, i.e., before
+        // x.send() returns (this has been observed in the wild).
+        // See https://github.com/mapbox/mapbox.js/issues/472
+        var original = callback;
+        callback = function() {
+            if (sent) {
+                original.apply(this, arguments);
+            } else {
+                var that = this, args = arguments;
+                setTimeout(function() {
+                    original.apply(that, args);
+                }, 0);
+            }
+        }
+    } else {
+        x = new window.XMLHttpRequest();
+    }
+
+    function loaded() {
+        if (
+            // XDomainRequest
+            x.status === undefined ||
+            // modern browsers
+            isSuccessful(x.status)) callback.call(x, null, x);
+        else callback.call(x, x, null);
+    }
+
+    // Both `onreadystatechange` and `onload` can fire. `onreadystatechange`
+    // has [been supported for longer](http://stackoverflow.com/a/9181508/229001).
+    if ('onload' in x) {
+        x.onload = loaded;
+    } else {
+        x.onreadystatechange = function readystate() {
+            if (x.readyState === 4) {
+                loaded();
+            }
+        };
+    }
+
+    // Call the callback with the XMLHttpRequest object as an error and prevent
+    // it from ever being called again by reassigning it to `noop`
+    x.onerror = function error(evt) {
+        // XDomainRequest provides no evt parameter
+        callback.call(this, evt || true, null);
+        callback = function() { };
+    };
+
+    // IE9 must have onprogress be set to a unique function.
+    x.onprogress = function() { };
+
+    x.ontimeout = function(evt) {
+        callback.call(this, evt, null);
+        callback = function() { };
+    };
+
+    x.onabort = function(evt) {
+        callback.call(this, evt, null);
+        callback = function() { };
+    };
+
+    // GET is the only supported HTTP Verb by XDomainRequest and is the
+    // only one supported here.
+    x.open('GET', url, true);
+
+    // Send the request. Sending data is not supported.
+    x.send(null);
+    sent = true;
+
+    return x;
+}
+
+if (typeof module !== 'undefined') module.exports = xhr;
+
+},{}],36:[function(require,module,exports){
 (function(global){/*! JSON v3.3.1 | http://bestiejs.github.io/json3 | Copyright 2012-2014, Kit Cambridge | http://kit.mit-license.org */
 ;(function () {
   // Detect the `define` function exposed by asynchronous module loaders. The
@@ -34777,107 +34880,5 @@ module.exports = function(url, callback) {
 }).call(this);
 
 })(window)
-},{}],36:[function(require,module,exports){
-function xhr(url, callback, cors) {
-    var sent = false;
-
-    if (typeof window.XMLHttpRequest === 'undefined') {
-        return callback(Error('Browser not supported'));
-    }
-
-    if (typeof cors === 'undefined') {
-        var m = url.match(/^\s*https?:\/\/[^\/]*/);
-        cors = m && (m[0] !== location.protocol + '//' + location.domain +
-                (location.port ? ':' + location.port : ''));
-    }
-
-    var x;
-
-    function isSuccessful(status) {
-        return status >= 200 && status < 300 || status === 304;
-    }
-
-    if (cors && (
-        // IE7-9 Quirks & Compatibility
-        typeof window.XDomainRequest === 'object' ||
-        // IE9 Standards mode
-        typeof window.XDomainRequest === 'function'
-    )) {
-        // IE8-10
-        x = new window.XDomainRequest();
-
-        // Ensure callback is never called synchronously, i.e., before
-        // x.send() returns (this has been observed in the wild).
-        // See https://github.com/mapbox/mapbox.js/issues/472
-        var original = callback;
-        callback = function() {
-            if (sent) {
-                original.apply(this, arguments);
-            } else {
-                var that = this, args = arguments;
-                setTimeout(function() {
-                    original.apply(that, args);
-                }, 0);
-            }
-        }
-    } else {
-        x = new window.XMLHttpRequest();
-    }
-
-    function loaded() {
-        if (
-            // XDomainRequest
-            x.status === undefined ||
-            // modern browsers
-            isSuccessful(x.status)) callback.call(x, null, x);
-        else callback.call(x, x, null);
-    }
-
-    // Both `onreadystatechange` and `onload` can fire. `onreadystatechange`
-    // has [been supported for longer](http://stackoverflow.com/a/9181508/229001).
-    if ('onload' in x) {
-        x.onload = loaded;
-    } else {
-        x.onreadystatechange = function readystate() {
-            if (x.readyState === 4) {
-                loaded();
-            }
-        };
-    }
-
-    // Call the callback with the XMLHttpRequest object as an error and prevent
-    // it from ever being called again by reassigning it to `noop`
-    x.onerror = function error(evt) {
-        // XDomainRequest provides no evt parameter
-        callback.call(this, evt || true, null);
-        callback = function() { };
-    };
-
-    // IE9 must have onprogress be set to a unique function.
-    x.onprogress = function() { };
-
-    x.ontimeout = function(evt) {
-        callback.call(this, evt, null);
-        callback = function() { };
-    };
-
-    x.onabort = function(evt) {
-        callback.call(this, evt, null);
-        callback = function() { };
-    };
-
-    // GET is the only supported HTTP Verb by XDomainRequest and is the
-    // only one supported here.
-    x.open('GET', url, true);
-
-    // Send the request. Sending data is not supported.
-    x.send(null);
-    sent = true;
-
-    return x;
-}
-
-if (typeof module !== 'undefined') module.exports = xhr;
-
-},{}]},{},[3])
+},{}]},{},[1])
 ;
