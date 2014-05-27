@@ -10,15 +10,15 @@ body {
   color:#404040;
   color:rgba(0,0,0,0.75);
   }
-h1,h2 {
+h1,h2,.logo {
   font-family:'Montserrat', Sans-serif;
-  text-transform:uppercase;
-  font-weight:bold;
   }
 h1 {
   font-size:16px;
   line-height:28px;
   margin:0 0 5px;
+  text-transform:uppercase;
+  font-weight:bold;
   }
 h4 {
   font-size:16px;
@@ -156,6 +156,35 @@ th, td {
     width:100px;
     height:70px;
     }
+
+.logo { position:relative; }
+.logo:after,
+.logo:before {
+  position:absolute;
+  text-indent:0;
+  display:inline-block;
+  top:24px;
+  font-size:12px;
+  color:rgba(0,0,0,0.45);
+  opacity:0;
+  -webkit-transition:all 100ms;
+     -moz-transition:all 100ms;
+       -o-transition:all 100ms;
+          transition:all 100ms;
+  }
+.logo:before {
+  content:'Forrest';
+  right:0;
+  color:rgba(0,0,0,0.75);
+  }
+  .logo:hover:before { right:100px; opacity:1; }
+
+.logo:after {
+  content:'A friendly geocoder';
+  left:0;
+  width:120px;
+  }
+  .logo:hover:after { left:100px; opacity:1; }
 
 .sprite.tooltip { text-indent:0; }
 
