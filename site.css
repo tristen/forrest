@@ -192,14 +192,14 @@ th, td {
   }
 .logo:before {
   content:'Forrest';
-  right:0;
+  right:80px;
   color:rgba(0,0,0,0.75);
   }
   .logo:hover:before { right:100px; opacity:1; }
 
 .logo:after {
   content:'A friendly geocoder';
-  left:0;
+  left:80px;
   width:120px;
   }
   .logo:hover:after { left:100px; opacity:1; }
