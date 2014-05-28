@@ -1,425 +1,297 @@
 ;(function(e,t,n){function i(n,s){if(!t[n]){if(!e[n]){var o=typeof require=="function"&&require;if(!s&&o)return o(n,!0);if(r)return r(n,!0);throw new Error("Cannot find module '"+n+"'")}var u=t[n]={exports:{}};e[n][0].call(u.exports,function(t){var r=e[n][1][t];return i(r?r:t)},u,u.exports)}return t[n].exports}var r=typeof require=="function"&&require;for(var s=0;s<n.length;s++)i(n[s]);return i})({1:[function(require,module,exports){
-require('mapbox.js');
-d3 = require('d3');
-var geocode = require('geocode-many');
-var geojson = require('geojson');
-var metatable = require('d3-metatable')(d3);
-var saveAs = require('filesaver.js');
-var cookie = require('wookie');
+(function(){/* FileSaver.js
+ * A saveAs() FileSaver implementation.
+ * 2013-01-23
+ *
+ * By Eli Grey, http://eligrey.com
+ * License: X11/MIT
+ *   See LICENSE.md
+ */
 
-var mapid, map, markers;
-var fileName = 'data';
-var set = d3.set([]);
-var data = [];
-var exportOptions = [{
-    name: 'Choose',
-    value: ''
-}, {
-    name: 'CSV',
-    value: 'csv'
-}, {
-    name: 'GeoJSON',
-    value: 'geojson'
-}];
+/*global self */
+/*jslint bitwise: true, regexp: true, confusion: true, es5: true, vars: true, white: true,
+  plusplus: true */
 
-if (!cookie.get('mapid')) {
-    h1('Enter a Mapbox Map ID');
-    sub('A <a href="https://www.mapbox.com/foundations/glossary/#mapid">Map ID</a> is a unique identifier to a map you have created on <a href="https://mapbox.com">Mapbox.com</a>');
+/*! @source http://purl.eligrey.com/github/FileSaver.js/blob/master/FileSaver.js */
 
-    var form = d3.select('.js-output')
-        .append('div')
-        .classed('col6 margin3 pad2y pill', true);
-
-    form.append('input')
-        .attr('type', 'text')
-        .attr('placeholder', 'username.mapid')
-        .classed('pad1 col8', true);
-
-    form.append('a')
-        .attr('href', '#')
-        .text('submit')
-        .classed('button fill-green pad1 col4', true)
-        .on('click', function() {
-            var val;
-            d3.event.stopPropagation();
-            d3.event.preventDefault();
-            d3.select('input[type=text]').html(function() {
-                val = this.value;
-            });
-
-            if (val.length) {
-                d3.json('http://a.tiles.mapbox.com/v3/' + val + '.json', function(error, json) {
-                    if (error) {
-                        h1('Unknown Map ID. <a href="/forrest/">Try again?</a>.');
-                    } else {
-                        cookie.set('mapid', val);
-                        init();
+var saveAs = saveAs
+  || (navigator.msSaveOrOpenBlob && navigator.msSaveOrOpenBlob.bind(navigator))
+  || (function(view) {
+	"use strict";
+	var
+		  doc = view.document
+		  // only get URL when necessary in case BlobBuilder.js hasn't overridden it yet
+		, get_URL = function() {
+			return view.URL || view.webkitURL || view;
+		}
+		, URL = view.URL || view.webkitURL || view
+		, save_link = doc.createElementNS("http://www.w3.org/1999/xhtml", "a")
+		, can_use_save_link =  !view.externalHost && "download" in save_link
+		, click = function(node) {
+			var event = doc.createEvent("MouseEvents");
+			event.initMouseEvent(
+				"click", true, false, view, 0, 0, 0, 0, 0
+				, false, false, false, false, 0, null
+			);
+			node.dispatchEvent(event);
+		}
+		, webkit_req_fs = view.webkitRequestFileSystem
+		, req_fs = view.requestFileSystem || webkit_req_fs || view.mozRequestFileSystem
+		, throw_outside = function (ex) {
+			(view.setImmediate || view.setTimeout)(function() {
+				throw ex;
+			}, 0);
+		}
+		, force_saveable_type = "application/octet-stream"
+		, fs_min_size = 0
+		, deletion_queue = []
+		, process_deletion_queue = function() {
+			var i = deletion_queue.length;
+			while (i--) {
+				var file = deletion_queue[i];
+				if (typeof file === "string") { // file is an object URL
+					URL.revokeObjectURL(file);
+				} else { // file is a File
+					file.remove();
+				}
+			}
+			deletion_queue.length = 0; // clear queue
+		}
+		, dispatch = function(filesaver, event_types, event) {
+			event_types = [].concat(event_types);
+			var i = event_types.length;
+			while (i--) {
+				var listener = filesaver["on" + event_types[i]];
+				if (typeof listener === "function") {
+					try {
+						listener.call(filesaver, event || filesaver);
+					} catch (ex) {
+						throw_outside(ex);
+					}
+				}
+			}
+		}
+		, FileSaver = function(blob, name) {
+			// First try a.download, then web filesystem, then object URLs
+			var
+				  filesaver = this
+				, type = blob.type
+				, blob_changed = false
+				, object_url
+				, target_view
+				, get_object_url = function() {
+					var object_url = get_URL().createObjectURL(blob);
+					deletion_queue.push(object_url);
+					return object_url;
+				}
+				, dispatch_all = function() {
+					dispatch(filesaver, "writestart progress write writeend".split(" "));
+				}
+				// on any filesys errors revert to saving with object URLs
+				, fs_error = function() {
+					// don't create more object URLs than needed
+					if (blob_changed || !object_url) {
+						object_url = get_object_url(blob);
+					}
+					if (target_view) {
+						target_view.location.href = object_url;
+					} else {
+                        window.open(object_url, "_blank");
                     }
-                });
-            }
-        });
+					filesaver.readyState = filesaver.DONE;
+					dispatch_all();
+				}
+				, abortable = function(func) {
+					return function() {
+						if (filesaver.readyState !== filesaver.DONE) {
+							return func.apply(this, arguments);
+						}
+					};
+				}
+				, create_if_not_found = {create: true, exclusive: false}
+				, slice
+			;
+			filesaver.readyState = filesaver.INIT;
+			if (!name) {
+				name = "download";
+			}
+			if (can_use_save_link) {
+				object_url = get_object_url(blob);
+				save_link.href = object_url;
+				save_link.download = name;
+				click(save_link);
+				filesaver.readyState = filesaver.DONE;
+				dispatch_all();
+				return;
+			}
+			// Object and web filesystem URLs have a problem saving in Google Chrome when
+			// viewed in a tab, so I force save with application/octet-stream
+			// http://code.google.com/p/chromium/issues/detail?id=91158
+			if (view.chrome && type && type !== force_saveable_type) {
+				slice = blob.slice || blob.webkitSlice;
+				blob = slice.call(blob, 0, blob.size, force_saveable_type);
+				blob_changed = true;
+			}
+			// Since I can't be sure that the guessed media type will trigger a download
+			// in WebKit, I append .download to the filename.
+			// https://bugs.webkit.org/show_bug.cgi?id=65440
+			if (webkit_req_fs && name !== "download") {
+				name += ".download";
+			}
+			if (type === force_saveable_type || webkit_req_fs) {
+				target_view = view;
+			}
+			if (!req_fs) {
+				fs_error();
+				return;
+			}
+			fs_min_size += blob.size;
+			req_fs(view.TEMPORARY, fs_min_size, abortable(function(fs) {
+				fs.root.getDirectory("saved", create_if_not_found, abortable(function(dir) {
+					var save = function() {
+						dir.getFile(name, create_if_not_found, abortable(function(file) {
+							file.createWriter(abortable(function(writer) {
+								writer.onwriteend = function(event) {
+									target_view.location.href = file.toURL();
+									deletion_queue.push(file);
+									filesaver.readyState = filesaver.DONE;
+									dispatch(filesaver, "writeend", event);
+								};
+								writer.onerror = function() {
+									var error = writer.error;
+									if (error.code !== error.ABORT_ERR) {
+										fs_error();
+									}
+								};
+								"writestart progress write abort".split(" ").forEach(function(event) {
+									writer["on" + event] = filesaver["on" + event];
+								});
+								writer.write(blob);
+								filesaver.abort = function() {
+									writer.abort();
+									filesaver.readyState = filesaver.DONE;
+								};
+								filesaver.readyState = filesaver.WRITING;
+							}), fs_error);
+						}), fs_error);
+					};
+					dir.getFile(name, {create: false}, abortable(function(file) {
+						// delete file if it already exists
+						file.remove();
+						save();
+					}), abortable(function(ex) {
+						if (ex.code === ex.NOT_FOUND_ERR) {
+							save();
+						} else {
+							fs_error();
+						}
+					}));
+				}), fs_error);
+			}), fs_error);
+		}
+		, FS_proto = FileSaver.prototype
+		, saveAs = function(blob, name) {
+			return new FileSaver(blob, name);
+		}
+	;
+	FS_proto.abort = function() {
+		var filesaver = this;
+		filesaver.readyState = filesaver.DONE;
+		dispatch(filesaver, "abort");
+	};
+	FS_proto.readyState = FS_proto.INIT = 0;
+	FS_proto.WRITING = 1;
+	FS_proto.DONE = 2;
 
-} else {
-    init();
-}
+	FS_proto.error =
+	FS_proto.onwritestart =
+	FS_proto.onprogress =
+	FS_proto.onwrite =
+	FS_proto.onabort =
+	FS_proto.onerror =
+	FS_proto.onwriteend =
+		null;
 
-function init() {
-    mapid = cookie.get('mapid');
-    h1('Import a comma separated file');
-    sub('Could be a .csv, .tsv, or .dsv file.');
+	view.addEventListener("unload", process_deletion_queue, false);
+	return saveAs;
+}(self));
 
-    d3.select('.js-output')
-    .html('')
-    .append('a')
-    .attr('href', '#')
-    .classed('button fill-green round pad2 col6 margin3', true)
-    .text('Add')
-    .on('click', function() {
-        d3.event.stopPropagation();
-        d3.event.preventDefault();
-        event = document.createEvent('HTMLEvents');
-        event.initEvent('click', true, false);
-        document.getElementById('import').dispatchEvent(event);
-    });
+if (typeof module !== 'undefined') module.exports = saveAs;
 
-    d3.select('header').select('nav')
-        .append('span')
-        .classed('sprite icon sprocket contain round tooltip', true)
-        .append('a')
-        .classed('round small pad1', true)
-        .text('Clear stored Map ID?')
-        .on('click', function() {
-            d3.event.stopPropagation();
-            d3.event.preventDefault();
-            cookie.unset('mapid');
-            window.setTimeout(function() {
-                location.reload();
-            }, 0);
-        });
-}
-
-d3.select('.js-file')
-    .on('change', function() {
-        d3.event.stopPropagation();
-        d3.event.preventDefault();
-        var files = d3.event.target.files;
-        if (files.length && detectType(files[0]) === 'dsv') {
-
-            filename = files[0].name.split('.');
-            fileName = filename.slice(0, filename.length - 1).join('.');
-
-            readFile(files[0], function(err, res) {
-                if (err) return h1(message);
-                data = d3.csv.parse(res);
-                var displayData = [];
-                for (var k in data[0]) {
-                    displayData.push({ label: k, val: data[0][k] });
-                }
-                h1('Choose fields');
-                sub('Select the columns that contain address information you want to geocode');
-                var output = d3.select('.js-output');
-                    output.html('');
-                    output.selectAll('div')
-                    .data(displayData)
-                    .enter()
-                    .append('div')
-                    .classed('pad0 col4', true)
-                    .html(function(d) {
-                        return '<input type="checkbox" id="' + cleanStr(d.label) + '" value="' + d.label + '">' +
-                        '<label class="keyline-all pad1 round" for="' + cleanStr(d.label) + '">' + d.label +
-                        '<span class="block small normal quiet">' + d.val + '</em></span>';
-                    })
-                    .selectAll('input')
-                    .on('change', function() {
-                        (set.has(this.value)) ?
-                            set.remove(this.value) :
-                            set.add(this.value);
-                    });
-
-                output.append('div')
-                    .classed('pad2y col12 clearfix', true)
-                    .append('a')
-                    .classed('button fill-green col6 margin3 pad2 round', true)
-                    .text('Geocode')
-                    .attr('href', '#')
-                    .on('click', function() {
-                        d3.event.stopPropagation();
-                        d3.event.preventDefault();
-
-                        if (set.values().length) {
-                            var queries = [];
-                            data.forEach(function(d) {
-                                var query = [];
-                                for (var k in d) if (set.has(k)) query.push(d[k]);
-                                queries.push({
-                                    name: query.join(', ')
-                                });
-                            });
-
-                            h1('Geocoding ...');
-                            sub('');
-                            output.html('');
-
-                            var p = d3.select('.js-output')
-                                .append('div')
-                                .classed('progress round-top fill-darken pad0 contain', true);
-
-                                p.append('div')
-                                    .classed('fill fill-blue pin-left', true);
-
-                            displayData.push({
-                                    label: 'Latitude'
-                                }, {
-                                    label: 'Longitude'
-                                });
-
-                            // Map and table views
-                            var views = d3.select('.js-output')
-                                .append('div')
-                                .classed('clip views', true);
-
-                            var table = views
-                                .append('table')
-                                .classed('prose active col12 table', true);
-
-                            table.append('thead')
-                                .append('tr')
-                                .selectAll('th')
-                                .data(displayData)
-                                .enter()
-                                .append('th')
-                                .text(function(d) {
-                                    return d.label;
-                                });
-
-                            table.append('tbody');
-                            var geocoder = geocode(mapid, 0);
-                            geocoder(queries, transform, progress, done);
-
-                            views
-                                .append('div')
-                                .attr('id', 'map')
-                                .classed('map row10 col12', true);
-
-                            // Initialize a map here.
-                            map = L.mapbox.map('map', mapid);
-                        }
-                    });
-            });
-        } else {
-            h1('Unsupported format. <a href="/forrest/">Try again?</a>.');
-        }
-    });
-
-function progress(e) {
-    var row = data[e.done - 1];
-    var results = (e.data) ? e.data.results : undefined;
-
-    if (results && results.length && results[0].length) {
-        row.latitude = results[0][0].lat;
-        row.longitude = results[0][0].lon;
-        row.type = results[0][0].type;
-    }
-
-    d3.select('table')
-        .select('tbody')
-        .append('tr')
-        .classed(e.status, true)
-        .selectAll('td')
-        .data(d3.values(row))
-        .enter()
-        .append('td')
-        .text(function(td) {
-            return td;
-        });
-
-    var ratio = 100 / e.todo;
-    var percent = parseInt((e.done * ratio), 10);
-    d3.select('.fill').style('width', percent + '%');
-}
-
-function transform(obj) {
-    return obj.name;
-}
-
-function editTable() {
-    return metatable({
-        newCol: false,
-        deleteCol: false,
-        renameCol: false
-    }).on('change', function(d, i) {
-        data[i] = d;
-    });
-}
-
-function done(err, res) {
-    d3.select('table').remove();
-    d3.select('.views')
-        .insert('div')
-        .classed('editable prose active col12 table', true)
-        .data([data])
-        .call(editTable());
-
-    if (err.length) {
-        h1('There was a problem geocoding! <a href="/">Try again?</a>.');
-        sub('');
-    }
-
-    h1('Geocoding complete!');
-    sub('Choose an export method');
-
-    d3.select('.progress')
-        .classed('done', true);
-
-    var exportOps = d3.select('.js-output')
-        .insert('div', '.progress')
-        .classed('col12 clearfix contain z10', true);
-
-    var options = exportOps.append('select')
-        .classed('margin3 col6', true)
-        .on('change', function() {
-            if (this.value) {
-                var exportName = (this.value === 'csv') ? fileName + '-geocoded' : fileName;
-                saveAs(new Blob([exportData(this.value)], {
-                    type: 'text/plain;charset=utf-8'
-                }), exportName + '.' + this.value);
-            }
-        });
-
-    options.selectAll('option')
-        .data(exportOptions)
-        .enter()
-        .append('option')
-        .text(function(d) { return d.name; })
-        .attr('value', function(d) { return d.value; });
-
-    // Toggle controls to view table/map.
-    var toggle = exportOps.append('div')
-        .classed('js-toggle toggle col2 margin5 pad1y inline center', true)
-        .selectAll('a')
-        .data(['Table', 'Map'])
-        .enter()
-        .append('a')
-        .attr('class', function(t) {
-            var names = 'keyline-all pad1x pad0y col6 small';
-            if (t === 'Table') names += ' active';
-            return names;
-        })
-        .attr('href', '#')
-        .text(function(t) { return t; })
-        .on('click', function() {
-            d3.event.stopPropagation();
-            d3.event.preventDefault();
-
-            // Active toggling of the switch
-            d3.selectAll('.toggle a').classed('active', false);
-            d3.select(this).classed('active', true);
-
-            // Active toggling of the containers
-            var view = this.innerText.toLowerCase();
-            d3.select('.views .active').classed('active', false);
-            d3.select('.' + view).classed('active', true);
-
-            if (view === 'map') {
-                map.invalidateSize();
-                geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
-
-                    // Remove Previous
-                    if (markers) map.removeLayer(markers);
-                    markers = new L.FeatureGroup();
-
-                    for (var i = 0; i < gj.features.length; i++) {
-                        var m = gj.features[i];
-                        var c = m.geometry.coordinates;
-                        var p = m.properties;
-                        var marker = L.marker([c[1], c[0]], {
-                            icon: L.mapbox.marker.icon({
-                                'marker-color': '#f86767',
-                            }),
-                            draggable: true
-                        })
-                        .on('dragend', function(e) {
-                            var newCoords = this.getLatLng();
-                            var d = data[this.indexInData];
-
-                            d.latitude = newCoords['lat'];
-                            d.longitude = newCoords['lng'];
-                            d3.select('.table').data([data]).call(editTable());
-                        })
-                        .addTo(map);
-
-                        marker.indexInData = i;
-                        marker.bindPopup(content(p));
-                        markers.addLayer(marker);
-                    }
-
-                    function content(props) {
-                        var html = '<nav>';
-                        for (var key in props) {
-                            html += '<div><strong>' + key + '</strong>: ' + props[key] + '</div>';
-                        }
-                        html += '</nav>';
-                        return html;
-                    }
-
-                    map.addLayer(markers).fitBounds(markers.getBounds());
-                });
-            }
-        });
-}
-
-function exportData(method) {
-    var v;
-    if (method === 'geojson') {
-        geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
-            v =  JSON.stringify(gj);
-        });
-    } else if (method === 'csv') {
-        v =  d3.csv.format(data);
-    }
-    return v;
-}
-
-function h1(title) { d3.select('.js-heading').html(title); }
-function sub(subtext) { d3.select('.js-sub').html(subtext); }
-
-function readFile(f, cb) {
+})()
+},{}],2:[function(require,module,exports){
+function tryParse(obj) {
     try {
-        var reader = new FileReader();
-        reader.readAsText(f);
-        reader.onload = function(e) {
-            (e.target && e.target.result) ?
-                cb(null, e.target.result) :
-                cb(readError(f));
-        };
-        reader.onerror = readError(f);
-    } catch(e) {
-        cb(readError(f));
+        return JSON.parse(obj);
+    } catch (e) {}
+
+    return obj;
+}
+
+function tryStringify(obj) {
+    if (typeof obj !== 'object' || !JSON.stringify) return obj;
+    return JSON.stringify(obj);
+}
+
+var wookie = {};
+
+wookie.set = function(name, value, expires, path, domain) {
+    var pair = escape(name) + '=' + escape(tryStringify(value));
+
+    if (!!expires) {
+        if (expires.constructor === Number) pair += ';max-age=' + expires;
+        else if (expires.constructor === String) pair += ';expires=' + expires;
+        else if (expires.constructor === Date) pair += ';expires=' + expires.toUTCString();
     }
-}
 
-function cleanStr(s) {
-    return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-*$/, '');
-}
+    pair += ';path=' + ((!!path) ? path : '/');
+    if (!!domain) pair += ';domain=' + domain;
 
-function readError(f) {
-    return {
-        message: 'Could not read file. <a href="/">Try again?</a>.'
-    };
-}
+    document.cookie = pair;
+    return this;
+};
 
-function detectType(f) {
-    var filename = f.name ? f.name.toLowerCase() : '';
-    function ext(_) { return filename.indexOf(_) !== -1; }
-    if (f.type === 'text/csv' ||
-        ext('.csv') ||
-        ext('.tsv') ||
-        ext('.dsv')) {
-        return 'dsv';
+wookie.setObject = function(object, expires, path, domain) {
+    for (var key in object) this.set(key, object[key], expires, path, domain);
+    return this;
+};
+
+wookie.get = function(name) {
+    var obj = this.getObject();
+    return obj[name];
+};
+
+wookie.getObject = function() {
+    var pairs = document.cookie.split(/;\s?/i);
+    var object = {};
+    var pair;
+
+    for (var i in pairs) {
+        if (typeof pairs[i] === 'string') {
+            pair = pairs[i].split('=');
+            if (pair.length <= 1) continue;
+            object[unescape(pair[0])] = tryParse(unescape(pair[1]));
+        }
     }
-}
 
-},{"mapbox.js":2,"d3":3,"geocode-many":4,"d3-metatable":5,"filesaver.js":6,"wookie":7,"geojson":8}],3:[function(require,module,exports){
+    return object;
+};
+
+wookie.unset = function(name) {
+    var date = new Date(0);
+    document.cookie = name + '=; expires=' + date.toUTCString();
+    return this;
+};
+
+wookie.clear = function() {
+    var obj = this.getObject();
+    for (var key in obj) this.unset(key);
+    return obj;
+};
+
+if (typeof module !== 'undefined') module.exports = wookie;
+
+},{}],3:[function(require,module,exports){
 !function() {
   var d3 = {
     version: "3.4.6"
@@ -9683,7 +9555,623 @@ function detectType(f) {
     this.d3 = d3;
   }
 }();
+},{}],4:[function(require,module,exports){
+(function(GeoJSON) {
+  GeoJSON.version = '0.1.5';
+
+  // Allow user to specify default parameters
+  GeoJSON.defaults = {};
+
+  // The one and only public function.
+  // Converts an array of objects into a GeoJSON feature collection
+  GeoJSON.parse = function(objects, params, callback) {
+    if(objects.length === 0) { throw new Error('No data found'); }
+
+    var geojson = {"type": "FeatureCollection", "features": []},
+        settings = applyDefaults(params, this.defaults),
+        propFunc;
+
+    geomAttrs.length = 0; // Reset the list of geometry fields
+    setGeom(settings);
+    propFunc = getPropFunction(settings);
+    
+    objects.forEach(function(item){
+      geojson.features.push(getFeature(item, settings, propFunc));
+    });
+
+    addOptionals(geojson, settings);
+
+    if (callback && typeof callback === 'function') {
+      callback(geojson);
+    } else {
+      return geojson;
+    }
+  };
+
+  // Helper functions
+  var geoms = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'],
+      geomAttrs = [];
+
+  // Adds default settings to user-specified params
+  // Does not overwrite any settings--only adds defaults
+  // the the user did not specify
+  function applyDefaults(params, defaults) {
+    var settings = params || {};
+
+    for(var setting in defaults) {
+      if(defaults.hasOwnProperty(setting) && !settings[setting]) {
+        settings[setting] = defaults[setting];
+      }
+    }
+
+    return settings;
+  }
+
+  // Adds the optional GeoJSON properties crs and bbox
+  // if they have been specified
+  function addOptionals(geojson, settings){
+    if(settings.crs) {
+      geojson.crs = {
+        type: "name",
+        properties: {
+          name: settings.crs
+        }
+      };
+    }
+    if (settings.bbox) {
+      geojson.bbox = settings.bbox;
+    }
+    if (settings.extraGlobal) {
+      geojson.properties = {};
+      for (var key in settings.extraGlobal) {
+        geojson.properties[key] = settings.extraGlobal[key];
+      }
+    }
+  }
+
+  // Moves the user-specified geometry parameters
+  // under the `geom` key in param for easier access
+  function setGeom(params) {
+    params.geom = {};
+
+    for(var param in params) {
+      if(params.hasOwnProperty(param) && geoms.indexOf(param) !== -1){
+        params.geom[param] = params[param];
+        delete params[param];
+      }
+    }
+
+    setGeomAttrList(params.geom);
+  }
+
+  // Adds fields which contain geometry data
+  // to geomAttrs. This list is used when adding
+  // properties to the features so that no geometry
+  // fields are added the properties key
+  function setGeomAttrList(params) {
+    for(var param in params) {
+      if(params.hasOwnProperty(param)) {
+        if(typeof params[param] === 'string') {
+          geomAttrs.push(params[param]);
+        } else if (typeof params[param] === 'object') { // Array of coordinates for Point
+          geomAttrs.push(params[param][0]);
+          geomAttrs.push(params[param][1]);
+        }
+      }
+    }
+
+    if(geomAttrs.length === 0) { throw new Error('No geometry attributes specified'); }
+  }
+
+  // Creates a feature object to be added
+  // to the GeoJSON features array
+  function getFeature(item, params, propFunc) {
+    var feature = { "type": "Feature" };
+
+    feature.geometry = buildGeom(item, params);
+    feature.properties = propFunc.call(item);
+
+    return feature;
+  }
+
+  // Assembles the `geometry` property
+  // for the feature output
+  function buildGeom(item, params) {
+    var geom = {},
+        attr;
+
+    for(var gtype in params.geom) {
+      attr = (typeof params.geom[gtype] === 'object') ? params.geom[gtype][0] : params.geom[gtype];
+      if(params.geom.hasOwnProperty(gtype) && item[attr]) {
+        geom.type = gtype;
+
+        if(typeof params.geom[gtype] === 'string') {
+          geom.coordinates = item[params.geom[gtype]];
+        } else {
+          geom.coordinates = [item[params.geom[gtype][1]], item[params.geom[gtype][0]]];
+        }
+      }
+    }
+
+    return geom;
+  }
+
+  // Returns the function to be used to
+  // build the properties object for each feature
+  function getPropFunction(params) {
+    var func;
+
+    if(!params.exclude && !params.include) {
+      func = function(properties) {
+        for(var attr in this) {
+          if(this.hasOwnProperty(attr) && (geomAttrs.indexOf(attr) === -1)) {
+            properties[attr] = this[attr];
+          }
+        }
+      };
+    } else if(params.include) {
+      func = function(properties) {
+        params.include.forEach(function(attr){
+          properties[attr] = this[attr];
+        }, this);
+      };
+    } else if(params.exclude) {
+      func = function(properties) {
+        for(var attr in this) {
+          if(this.hasOwnProperty(attr) && (geomAttrs.indexOf(attr) === -1) && (params.exclude.indexOf(attr) === -1)) {
+            properties[attr] = this[attr];
+          }
+        }
+      };
+    }
+
+    return function() {
+      var properties = {};
+
+      func.call(this, properties);
+
+      if(params.extra) { addExtra(properties, params.extra); }
+      return properties;
+    };
+  }
+
+  // Adds data contained in the `extra`
+  // parameter if it has been specified
+  function addExtra(properties, extra) {
+    for(var key in extra){
+      if(extra.hasOwnProperty(key)) {
+        properties[key] = extra[key];
+      }
+    }
+
+    return properties;
+  }
+
+}(typeof module == 'object' ? module.exports : window.GeoJSON = {}));
 },{}],5:[function(require,module,exports){
+require('mapbox.js');
+d3 = require('d3');
+var geocode = require('geocode-many');
+var geojson = require('geojson');
+var metatable = require('d3-metatable')(d3);
+var saveAs = require('filesaver.js');
+var cookie = require('wookie');
+
+var mapid, map, markers;
+var fileName = 'data';
+var set = d3.set([]);
+var data = [];
+var exportOptions = [{
+    name: 'Choose',
+    value: ''
+}, {
+    name: 'CSV',
+    value: 'csv'
+}, {
+    name: 'GeoJSON',
+    value: 'geojson'
+}];
+
+if (!cookie.get('mapid')) {
+    h1('Enter a Mapbox Map ID');
+    sub('A <a href="https://www.mapbox.com/foundations/glossary/#mapid">Map ID</a> is a unique identifier to a map you have created on <a href="https://mapbox.com">Mapbox.com</a>');
+
+    var form = d3.select('.js-output')
+        .append('div')
+        .classed('col6 margin3 pad2y pill', true);
+
+    form.append('input')
+        .attr('type', 'text')
+        .attr('placeholder', 'username.mapid')
+        .classed('pad1 col8', true);
+
+    form.append('a')
+        .attr('href', '#')
+        .text('submit')
+        .classed('button fill-green pad1 col4', true)
+        .on('click', function() {
+            var val;
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+            d3.select('input[type=text]').html(function() {
+                val = this.value;
+            });
+
+            if (val.length) {
+                d3.json('http://a.tiles.mapbox.com/v3/' + val + '.json', function(error, json) {
+                    if (error) {
+                        h1('Unknown Map ID. <a href="/forrest/">Try again?</a>.');
+                    } else {
+                        cookie.set('mapid', val);
+                        init();
+                    }
+                });
+            }
+        });
+
+} else {
+    init();
+}
+
+function init() {
+    mapid = cookie.get('mapid');
+    h1('Import a comma separated file');
+    sub('Could be a .csv, .tsv, or .dsv file.');
+
+    d3.select('.js-output')
+    .html('')
+    .append('a')
+    .attr('href', '#')
+    .classed('button fill-green round pad2 col6 margin3', true)
+    .text('Add')
+    .on('click', function() {
+        d3.event.stopPropagation();
+        d3.event.preventDefault();
+        event = document.createEvent('HTMLEvents');
+        event.initEvent('click', true, false);
+        document.getElementById('import').dispatchEvent(event);
+    });
+
+    d3.select('header').select('nav')
+        .append('span')
+        .classed('sprite icon sprocket contain round tooltip', true)
+        .append('a')
+        .classed('round small pad1', true)
+        .text('Clear stored Map ID?')
+        .on('click', function() {
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+            cookie.unset('mapid');
+            location.reload();
+        });
+}
+
+d3.select('.js-file')
+    .on('change', function() {
+        d3.event.stopPropagation();
+        d3.event.preventDefault();
+        var files = d3.event.target.files;
+        if (files.length && detectType(files[0]) === 'dsv') {
+
+            filename = files[0].name.split('.');
+            fileName = filename.slice(0, filename.length - 1).join('.');
+
+            readFile(files[0], function(err, res) {
+                if (err) return h1(message);
+                data = d3.csv.parse(res);
+                var displayData = [];
+                for (var k in data[0]) {
+                    displayData.push({ label: k, val: data[0][k] });
+                }
+                h1('Choose fields');
+                sub('Select the columns that contain address information you want to geocode');
+                var output = d3.select('.js-output');
+                    output.html('');
+                    output.selectAll('div')
+                    .data(displayData)
+                    .enter()
+                    .append('div')
+                    .classed('pad0 col4', true)
+                    .html(function(d) {
+                        return '<input type="checkbox" id="' + cleanStr(d.label) + '" value="' + d.label + '">' +
+                        '<label class="keyline-all pad1 round" for="' + cleanStr(d.label) + '">' + d.label +
+                        '<span class="block small normal quiet">' + d.val + '</em></span>';
+                    })
+                    .selectAll('input')
+                    .on('change', function() {
+                        (set.has(this.value)) ?
+                            set.remove(this.value) :
+                            set.add(this.value);
+                    });
+
+                output.append('div')
+                    .classed('pad2y col12 clearfix', true)
+                    .append('a')
+                    .classed('button fill-green col6 margin3 pad2 round', true)
+                    .text('Geocode')
+                    .attr('href', '#')
+                    .on('click', function() {
+                        d3.event.stopPropagation();
+                        d3.event.preventDefault();
+
+                        if (set.values().length) {
+                            var queries = [];
+                            data.forEach(function(d) {
+                                var query = [];
+                                for (var k in d) if (set.has(k)) query.push(d[k]);
+                                queries.push({
+                                    name: query.join(', ')
+                                });
+                            });
+
+                            h1('Geocoding ...');
+                            sub('');
+                            output.html('');
+
+                            var p = d3.select('.js-output')
+                                .append('div')
+                                .classed('progress round-top fill-darken pad0 contain', true);
+
+                                p.append('div')
+                                    .classed('fill fill-blue pin-left', true);
+
+                            displayData.push({
+                                    label: 'Latitude'
+                                }, {
+                                    label: 'Longitude'
+                                });
+
+                            // Map and table views
+                            var views = d3.select('.js-output')
+                                .append('div')
+                                .classed('clip views', true);
+
+                            var table = views
+                                .append('table')
+                                .classed('prose active col12 table', true);
+
+                            table.append('thead')
+                                .append('tr')
+                                .selectAll('th')
+                                .data(displayData)
+                                .enter()
+                                .append('th')
+                                .text(function(d) {
+                                    return d.label;
+                                });
+
+                            table.append('tbody');
+                            var geocoder = geocode(mapid, 0);
+                            geocoder(queries, transform, progress, done);
+
+                            views
+                                .append('div')
+                                .attr('id', 'map')
+                                .classed('map row10 col12', true);
+
+                            // Initialize a map here.
+                            map = L.mapbox.map('map', mapid);
+                        }
+                    });
+            });
+        } else {
+            h1('Unsupported format. <a href="/forrest/">Try again?</a>.');
+        }
+    });
+
+function progress(e) {
+    var row = data[e.done - 1];
+    var results = (e.data) ? e.data.results : undefined;
+
+    if (results && results.length && results[0].length) {
+        row.latitude = results[0][0].lat;
+        row.longitude = results[0][0].lon;
+        row.type = results[0][0].type;
+    }
+
+    d3.select('table')
+        .select('tbody')
+        .append('tr')
+        .classed(e.status, true)
+        .selectAll('td')
+        .data(d3.values(row))
+        .enter()
+        .append('td')
+        .text(function(td) {
+            return td;
+        });
+
+    var ratio = 100 / e.todo;
+    var percent = parseInt((e.done * ratio), 10);
+    d3.select('.fill').style('width', percent + '%');
+}
+
+function transform(obj) {
+    return obj.name;
+}
+
+function editTable() {
+    return metatable({
+        newCol: false,
+        deleteCol: false,
+        renameCol: false
+    }).on('change', function(d, i) {
+        data[i] = d;
+    });
+}
+
+function done(err, res) {
+    d3.select('table').remove();
+    d3.select('.views')
+        .insert('div')
+        .classed('editable prose active col12 table', true)
+        .data([data])
+        .call(editTable());
+
+    if (err.length) {
+        h1('There was a problem geocoding! <a href="/">Try again?</a>.');
+        sub('');
+    }
+
+    h1('Geocoding complete!');
+    sub('Choose an export method');
+
+    d3.select('.progress')
+        .classed('done', true);
+
+    var exportOps = d3.select('.js-output')
+        .insert('div', '.progress')
+        .classed('col12 clearfix contain z10', true);
+
+    var options = exportOps.append('select')
+        .classed('margin3 col6', true)
+        .on('change', function() {
+            if (this.value) {
+                var exportName = (this.value === 'csv') ? fileName + '-geocoded' : fileName;
+                saveAs(new Blob([exportData(this.value)], {
+                    type: 'text/plain;charset=utf-8'
+                }), exportName + '.' + this.value);
+            }
+        });
+
+    options.selectAll('option')
+        .data(exportOptions)
+        .enter()
+        .append('option')
+        .text(function(d) { return d.name; })
+        .attr('value', function(d) { return d.value; });
+
+    // Toggle controls to view table/map.
+    var toggle = exportOps.append('div')
+        .classed('js-toggle toggle col2 margin5 pad1y inline center', true)
+        .selectAll('a')
+        .data(['Table', 'Map'])
+        .enter()
+        .append('a')
+        .attr('class', function(t) {
+            var names = 'keyline-all pad1x pad0y col6 small';
+            if (t === 'Table') names += ' active';
+            return names;
+        })
+        .attr('href', '#')
+        .text(function(t) { return t; })
+        .on('click', function() {
+            d3.event.stopPropagation();
+            d3.event.preventDefault();
+
+            // Active toggling of the switch
+            d3.selectAll('.toggle a').classed('active', false);
+            d3.select(this).classed('active', true);
+
+            // Active toggling of the containers
+            var view = this.innerText.toLowerCase();
+            d3.select('.views .active').classed('active', false);
+            d3.select('.' + view).classed('active', true);
+
+            if (view === 'map') {
+                map.invalidateSize();
+                geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
+
+                    // Remove Previous
+                    if (markers) map.removeLayer(markers);
+                    markers = new L.FeatureGroup();
+
+                    for (var i = 0; i < gj.features.length; i++) {
+                        var m = gj.features[i];
+                        var c = m.geometry.coordinates;
+                        var p = m.properties;
+                        var marker = L.marker([c[1], c[0]], {
+                            icon: L.mapbox.marker.icon({
+                                'marker-color': '#f86767',
+                            }),
+                            draggable: true
+                        })
+                        .on('dragend', function(e) {
+                            var newCoords = this.getLatLng();
+                            var d = data[this.indexInData];
+
+                            d.latitude = newCoords['lat'];
+                            d.longitude = newCoords['lng'];
+                            d3.select('.table').data([data]).call(editTable());
+                        })
+                        .addTo(map);
+
+                        marker.indexInData = i;
+                        marker.bindPopup(content(p));
+                        markers.addLayer(marker);
+                    }
+
+                    function content(props) {
+                        var html = '<nav>';
+                        for (var key in props) {
+                            html += '<div><strong>' + key + '</strong>: ' + props[key] + '</div>';
+                        }
+                        html += '</nav>';
+                        return html;
+                    }
+
+                    map.addLayer(markers).fitBounds(markers.getBounds());
+                });
+            }
+        });
+}
+
+function exportData(method) {
+    var v;
+    if (method === 'geojson') {
+        geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
+            v =  JSON.stringify(gj);
+        });
+    } else if (method === 'csv') {
+        v =  d3.csv.format(data);
+    }
+    return v;
+}
+
+function h1(title) { d3.select('.js-heading').html(title); }
+function sub(subtext) { d3.select('.js-sub').html(subtext); }
+
+function readFile(f, cb) {
+    try {
+        var reader = new FileReader();
+        reader.readAsText(f);
+        reader.onload = function(e) {
+            (e.target && e.target.result) ?
+                cb(null, e.target.result) :
+                cb(readError(f));
+        };
+        reader.onerror = readError(f);
+    } catch(e) {
+        cb(readError(f));
+    }
+}
+
+function cleanStr(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-*$/, '');
+}
+
+function readError(f) {
+    return {
+        message: 'Could not read file. <a href="/">Try again?</a>.'
+    };
+}
+
+function detectType(f) {
+    var filename = f.name ? f.name.toLowerCase() : '';
+    function ext(_) { return filename.indexOf(_) !== -1; }
+    if (f.type === 'text/csv' ||
+        ext('.csv') ||
+        ext('.tsv') ||
+        ext('.dsv')) {
+        return 'dsv';
+    }
+}
+
+},{"mapbox.js":6,"d3":3,"filesaver.js":1,"wookie":2,"geocode-many":7,"geojson":4,"d3-metatable":8}],6:[function(require,module,exports){
+require('./leaflet');
+require('./mapbox');
+
+},{"./leaflet":9,"./mapbox":10}],8:[function(require,module,exports){
 if (typeof module !== 'undefined') {
     module.exports = function(d3) {
         return metatable;
@@ -9921,500 +10409,53 @@ function metatable(options) {
     return d3.rebind(table, event, 'on');
 }
 
-},{}],6:[function(require,module,exports){
-(function(){/* FileSaver.js
- * A saveAs() FileSaver implementation.
- * 2013-01-23
- *
- * By Eli Grey, http://eligrey.com
- * License: X11/MIT
- *   See LICENSE.md
- */
-
-/*global self */
-/*jslint bitwise: true, regexp: true, confusion: true, es5: true, vars: true, white: true,
-  plusplus: true */
-
-/*! @source http://purl.eligrey.com/github/FileSaver.js/blob/master/FileSaver.js */
-
-var saveAs = saveAs
-  || (navigator.msSaveOrOpenBlob && navigator.msSaveOrOpenBlob.bind(navigator))
-  || (function(view) {
-	"use strict";
-	var
-		  doc = view.document
-		  // only get URL when necessary in case BlobBuilder.js hasn't overridden it yet
-		, get_URL = function() {
-			return view.URL || view.webkitURL || view;
-		}
-		, URL = view.URL || view.webkitURL || view
-		, save_link = doc.createElementNS("http://www.w3.org/1999/xhtml", "a")
-		, can_use_save_link =  !view.externalHost && "download" in save_link
-		, click = function(node) {
-			var event = doc.createEvent("MouseEvents");
-			event.initMouseEvent(
-				"click", true, false, view, 0, 0, 0, 0, 0
-				, false, false, false, false, 0, null
-			);
-			node.dispatchEvent(event);
-		}
-		, webkit_req_fs = view.webkitRequestFileSystem
-		, req_fs = view.requestFileSystem || webkit_req_fs || view.mozRequestFileSystem
-		, throw_outside = function (ex) {
-			(view.setImmediate || view.setTimeout)(function() {
-				throw ex;
-			}, 0);
-		}
-		, force_saveable_type = "application/octet-stream"
-		, fs_min_size = 0
-		, deletion_queue = []
-		, process_deletion_queue = function() {
-			var i = deletion_queue.length;
-			while (i--) {
-				var file = deletion_queue[i];
-				if (typeof file === "string") { // file is an object URL
-					URL.revokeObjectURL(file);
-				} else { // file is a File
-					file.remove();
-				}
-			}
-			deletion_queue.length = 0; // clear queue
-		}
-		, dispatch = function(filesaver, event_types, event) {
-			event_types = [].concat(event_types);
-			var i = event_types.length;
-			while (i--) {
-				var listener = filesaver["on" + event_types[i]];
-				if (typeof listener === "function") {
-					try {
-						listener.call(filesaver, event || filesaver);
-					} catch (ex) {
-						throw_outside(ex);
-					}
-				}
-			}
-		}
-		, FileSaver = function(blob, name) {
-			// First try a.download, then web filesystem, then object URLs
-			var
-				  filesaver = this
-				, type = blob.type
-				, blob_changed = false
-				, object_url
-				, target_view
-				, get_object_url = function() {
-					var object_url = get_URL().createObjectURL(blob);
-					deletion_queue.push(object_url);
-					return object_url;
-				}
-				, dispatch_all = function() {
-					dispatch(filesaver, "writestart progress write writeend".split(" "));
-				}
-				// on any filesys errors revert to saving with object URLs
-				, fs_error = function() {
-					// don't create more object URLs than needed
-					if (blob_changed || !object_url) {
-						object_url = get_object_url(blob);
-					}
-					if (target_view) {
-						target_view.location.href = object_url;
-					} else {
-                        window.open(object_url, "_blank");
-                    }
-					filesaver.readyState = filesaver.DONE;
-					dispatch_all();
-				}
-				, abortable = function(func) {
-					return function() {
-						if (filesaver.readyState !== filesaver.DONE) {
-							return func.apply(this, arguments);
-						}
-					};
-				}
-				, create_if_not_found = {create: true, exclusive: false}
-				, slice
-			;
-			filesaver.readyState = filesaver.INIT;
-			if (!name) {
-				name = "download";
-			}
-			if (can_use_save_link) {
-				object_url = get_object_url(blob);
-				save_link.href = object_url;
-				save_link.download = name;
-				click(save_link);
-				filesaver.readyState = filesaver.DONE;
-				dispatch_all();
-				return;
-			}
-			// Object and web filesystem URLs have a problem saving in Google Chrome when
-			// viewed in a tab, so I force save with application/octet-stream
-			// http://code.google.com/p/chromium/issues/detail?id=91158
-			if (view.chrome && type && type !== force_saveable_type) {
-				slice = blob.slice || blob.webkitSlice;
-				blob = slice.call(blob, 0, blob.size, force_saveable_type);
-				blob_changed = true;
-			}
-			// Since I can't be sure that the guessed media type will trigger a download
-			// in WebKit, I append .download to the filename.
-			// https://bugs.webkit.org/show_bug.cgi?id=65440
-			if (webkit_req_fs && name !== "download") {
-				name += ".download";
-			}
-			if (type === force_saveable_type || webkit_req_fs) {
-				target_view = view;
-			}
-			if (!req_fs) {
-				fs_error();
-				return;
-			}
-			fs_min_size += blob.size;
-			req_fs(view.TEMPORARY, fs_min_size, abortable(function(fs) {
-				fs.root.getDirectory("saved", create_if_not_found, abortable(function(dir) {
-					var save = function() {
-						dir.getFile(name, create_if_not_found, abortable(function(file) {
-							file.createWriter(abortable(function(writer) {
-								writer.onwriteend = function(event) {
-									target_view.location.href = file.toURL();
-									deletion_queue.push(file);
-									filesaver.readyState = filesaver.DONE;
-									dispatch(filesaver, "writeend", event);
-								};
-								writer.onerror = function() {
-									var error = writer.error;
-									if (error.code !== error.ABORT_ERR) {
-										fs_error();
-									}
-								};
-								"writestart progress write abort".split(" ").forEach(function(event) {
-									writer["on" + event] = filesaver["on" + event];
-								});
-								writer.write(blob);
-								filesaver.abort = function() {
-									writer.abort();
-									filesaver.readyState = filesaver.DONE;
-								};
-								filesaver.readyState = filesaver.WRITING;
-							}), fs_error);
-						}), fs_error);
-					};
-					dir.getFile(name, {create: false}, abortable(function(file) {
-						// delete file if it already exists
-						file.remove();
-						save();
-					}), abortable(function(ex) {
-						if (ex.code === ex.NOT_FOUND_ERR) {
-							save();
-						} else {
-							fs_error();
-						}
-					}));
-				}), fs_error);
-			}), fs_error);
-		}
-		, FS_proto = FileSaver.prototype
-		, saveAs = function(blob, name) {
-			return new FileSaver(blob, name);
-		}
-	;
-	FS_proto.abort = function() {
-		var filesaver = this;
-		filesaver.readyState = filesaver.DONE;
-		dispatch(filesaver, "abort");
-	};
-	FS_proto.readyState = FS_proto.INIT = 0;
-	FS_proto.WRITING = 1;
-	FS_proto.DONE = 2;
-
-	FS_proto.error =
-	FS_proto.onwritestart =
-	FS_proto.onprogress =
-	FS_proto.onwrite =
-	FS_proto.onabort =
-	FS_proto.onerror =
-	FS_proto.onwriteend =
-		null;
-
-	view.addEventListener("unload", process_deletion_queue, false);
-	return saveAs;
-}(self));
-
-if (typeof module !== 'undefined') module.exports = saveAs;
-
-})()
-},{}],7:[function(require,module,exports){
-function tryParse(obj) {
-    try {
-        return JSON.parse(obj);
-    } catch (e) {}
-
-    return obj;
-}
-
-function tryStringify(obj) {
-    if (typeof obj !== 'object' || !JSON.stringify) return obj;
-    return JSON.stringify(obj);
-}
-
-var wookie = {};
-
-wookie.set = function(name, value, expires, path, domain) {
-    var pair = escape(name) + '=' + escape(tryStringify(value));
-
-    if (!!expires) {
-        if (expires.constructor === Number) pair += ';max-age=' + expires;
-        else if (expires.constructor === String) pair += ';expires=' + expires;
-        else if (expires.constructor === Date) pair += ';expires=' + expires.toUTCString();
-    }
-
-    pair += ';path=' + ((!!path) ? path : '/');
-    if (!!domain) pair += ';domain=' + domain;
-
-    document.cookie = pair;
-    return this;
-};
-
-wookie.setObject = function(object, expires, path, domain) {
-    for (var key in object) this.set(key, object[key], expires, path, domain);
-    return this;
-};
-
-wookie.get = function(name) {
-    var obj = this.getObject();
-    return obj[name];
-};
-
-wookie.getObject = function() {
-    var pairs = document.cookie.split(/;\s?/i);
-    var object = {};
-    var pair;
-
-    for (var i in pairs) {
-        if (typeof pairs[i] === 'string') {
-            pair = pairs[i].split('=');
-            if (pair.length <= 1) continue;
-            object[unescape(pair[0])] = tryParse(unescape(pair[1]));
-        }
-    }
-
-    return object;
-};
-
-wookie.unset = function(name) {
-    var date = new Date(0);
-    document.cookie = name + '=; expires=' + date.toUTCString();
-    return this;
-};
-
-wookie.clear = function() {
-    var obj = this.getObject();
-    for (var key in obj) this.unset(key);
-    return obj;
-};
-
-if (typeof module !== 'undefined') module.exports = wookie;
-
-},{}],8:[function(require,module,exports){
-(function(GeoJSON) {
-  GeoJSON.version = '0.1.5';
-
-  // Allow user to specify default parameters
-  GeoJSON.defaults = {};
-
-  // The one and only public function.
-  // Converts an array of objects into a GeoJSON feature collection
-  GeoJSON.parse = function(objects, params, callback) {
-    if(objects.length === 0) { throw new Error('No data found'); }
-
-    var geojson = {"type": "FeatureCollection", "features": []},
-        settings = applyDefaults(params, this.defaults),
-        propFunc;
-
-    geomAttrs.length = 0; // Reset the list of geometry fields
-    setGeom(settings);
-    propFunc = getPropFunction(settings);
-    
-    objects.forEach(function(item){
-      geojson.features.push(getFeature(item, settings, propFunc));
-    });
-
-    addOptionals(geojson, settings);
-
-    if (callback && typeof callback === 'function') {
-      callback(geojson);
-    } else {
-      return geojson;
-    }
-  };
-
-  // Helper functions
-  var geoms = ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon'],
-      geomAttrs = [];
-
-  // Adds default settings to user-specified params
-  // Does not overwrite any settings--only adds defaults
-  // the the user did not specify
-  function applyDefaults(params, defaults) {
-    var settings = params || {};
-
-    for(var setting in defaults) {
-      if(defaults.hasOwnProperty(setting) && !settings[setting]) {
-        settings[setting] = defaults[setting];
-      }
-    }
-
-    return settings;
-  }
-
-  // Adds the optional GeoJSON properties crs and bbox
-  // if they have been specified
-  function addOptionals(geojson, settings){
-    if(settings.crs) {
-      geojson.crs = {
-        type: "name",
-        properties: {
-          name: settings.crs
-        }
-      };
-    }
-    if (settings.bbox) {
-      geojson.bbox = settings.bbox;
-    }
-    if (settings.extraGlobal) {
-      geojson.properties = {};
-      for (var key in settings.extraGlobal) {
-        geojson.properties[key] = settings.extraGlobal[key];
-      }
-    }
-  }
-
-  // Moves the user-specified geometry parameters
-  // under the `geom` key in param for easier access
-  function setGeom(params) {
-    params.geom = {};
-
-    for(var param in params) {
-      if(params.hasOwnProperty(param) && geoms.indexOf(param) !== -1){
-        params.geom[param] = params[param];
-        delete params[param];
-      }
-    }
-
-    setGeomAttrList(params.geom);
-  }
-
-  // Adds fields which contain geometry data
-  // to geomAttrs. This list is used when adding
-  // properties to the features so that no geometry
-  // fields are added the properties key
-  function setGeomAttrList(params) {
-    for(var param in params) {
-      if(params.hasOwnProperty(param)) {
-        if(typeof params[param] === 'string') {
-          geomAttrs.push(params[param]);
-        } else if (typeof params[param] === 'object') { // Array of coordinates for Point
-          geomAttrs.push(params[param][0]);
-          geomAttrs.push(params[param][1]);
-        }
-      }
-    }
-
-    if(geomAttrs.length === 0) { throw new Error('No geometry attributes specified'); }
-  }
-
-  // Creates a feature object to be added
-  // to the GeoJSON features array
-  function getFeature(item, params, propFunc) {
-    var feature = { "type": "Feature" };
-
-    feature.geometry = buildGeom(item, params);
-    feature.properties = propFunc.call(item);
-
-    return feature;
-  }
-
-  // Assembles the `geometry` property
-  // for the feature output
-  function buildGeom(item, params) {
-    var geom = {},
-        attr;
-
-    for(var gtype in params.geom) {
-      attr = (typeof params.geom[gtype] === 'object') ? params.geom[gtype][0] : params.geom[gtype];
-      if(params.geom.hasOwnProperty(gtype) && item[attr]) {
-        geom.type = gtype;
-
-        if(typeof params.geom[gtype] === 'string') {
-          geom.coordinates = item[params.geom[gtype]];
-        } else {
-          geom.coordinates = [item[params.geom[gtype][1]], item[params.geom[gtype][0]]];
-        }
-      }
-    }
-
-    return geom;
-  }
-
-  // Returns the function to be used to
-  // build the properties object for each feature
-  function getPropFunction(params) {
-    var func;
-
-    if(!params.exclude && !params.include) {
-      func = function(properties) {
-        for(var attr in this) {
-          if(this.hasOwnProperty(attr) && (geomAttrs.indexOf(attr) === -1)) {
-            properties[attr] = this[attr];
-          }
-        }
-      };
-    } else if(params.include) {
-      func = function(properties) {
-        params.include.forEach(function(attr){
-          properties[attr] = this[attr];
-        }, this);
-      };
-    } else if(params.exclude) {
-      func = function(properties) {
-        for(var attr in this) {
-          if(this.hasOwnProperty(attr) && (geomAttrs.indexOf(attr) === -1) && (params.exclude.indexOf(attr) === -1)) {
-            properties[attr] = this[attr];
-          }
-        }
-      };
-    }
-
-    return function() {
-      var properties = {};
-
-      func.call(this, properties);
-
-      if(params.extra) { addExtra(properties, params.extra); }
-      return properties;
-    };
-  }
-
-  // Adds data contained in the `extra`
-  // parameter if it has been specified
-  function addExtra(properties, extra) {
-    for(var key in extra){
-      if(extra.hasOwnProperty(key)) {
-        properties[key] = extra[key];
-      }
-    }
-
-    return properties;
-  }
-
-}(typeof module == 'object' ? module.exports : window.GeoJSON = {}));
-},{}],2:[function(require,module,exports){
-require('./leaflet');
-require('./mapbox');
-
-},{"./leaflet":9,"./mapbox":10}],9:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 window.L = require('leaflet/dist/leaflet-src');
 
 },{"leaflet/dist/leaflet-src":11}],12:[function(require,module,exports){
+module.exports={
+  "author": "Mapbox",
+  "name": "mapbox.js",
+  "description": "mapbox javascript api",
+  "version": "1.6.3",
+  "homepage": "http://mapbox.com/",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/mapbox/mapbox.js.git"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "leaflet": "0.7.2",
+    "mustache": "0.7.3",
+    "corslite": "0.0.5",
+    "json3": "3.3.1",
+    "sanitize-caja": "0.0.0"
+  },
+  "scripts": {
+    "test": "jshint src/*.js && mocha-phantomjs test/index.html"
+  },
+  "devDependencies": {
+    "leaflet-hash": "0.2.1",
+    "leaflet-fullscreen": "0.0.0",
+    "uglify-js": "2.4.8",
+    "mocha": "1.17.1",
+    "expect.js": "0.3.1",
+    "sinon": "1.8.2",
+    "mocha-phantomjs": "3.1.6",
+    "happen": "0.1.3",
+    "browserify": "3.23.1",
+    "jshint": "2.4.4",
+    "clean-css": "~2.0.7",
+    "minimist": "0.0.5",
+    "marked": "~0.3.0"
+  },
+  "optionalDependencies": {},
+  "engines": {
+    "node": "*"
+  }
+}
+
+},{}],13:[function(require,module,exports){
 (function() {
   var slice = [].slice;
 
@@ -10496,7 +10537,7 @@ window.L = require('leaflet/dist/leaflet-src');
   else this.queue = queue;
 })();
 
-},{}],4:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 (function(global){!function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.geocodemany=e():"undefined"!=typeof global?global.geocodemany=e():"undefined"!=typeof self&&(self.geocodemany=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 var d3 = require('d3');
 var queue = require('queue-async');
@@ -19942,50 +19983,7 @@ function geocodemany(mapid, throttle) {
 });
 ;
 })(window)
-},{"queue-async":12,"d3":3}],13:[function(require,module,exports){
-module.exports={
-  "author": "Mapbox",
-  "name": "mapbox.js",
-  "description": "mapbox javascript api",
-  "version": "1.6.3",
-  "homepage": "http://mapbox.com/",
-  "repository": {
-    "type": "git",
-    "url": "git://github.com/mapbox/mapbox.js.git"
-  },
-  "main": "index.js",
-  "dependencies": {
-    "leaflet": "0.7.2",
-    "mustache": "0.7.3",
-    "corslite": "0.0.5",
-    "json3": "3.3.1",
-    "sanitize-caja": "0.0.0"
-  },
-  "scripts": {
-    "test": "jshint src/*.js && mocha-phantomjs test/index.html"
-  },
-  "devDependencies": {
-    "leaflet-hash": "0.2.1",
-    "leaflet-fullscreen": "0.0.0",
-    "uglify-js": "2.4.8",
-    "mocha": "1.17.1",
-    "expect.js": "0.3.1",
-    "sinon": "1.8.2",
-    "mocha-phantomjs": "3.1.6",
-    "happen": "0.1.3",
-    "browserify": "3.23.1",
-    "jshint": "2.4.4",
-    "clean-css": "~2.0.7",
-    "minimist": "0.0.5",
-    "marked": "~0.3.0"
-  },
-  "optionalDependencies": {},
-  "engines": {
-    "node": "*"
-  }
-}
-
-},{}],11:[function(require,module,exports){
+},{"queue-async":13,"d3":3}],11:[function(require,module,exports){
 (function(){/*
  Leaflet, a JavaScript library for mobile-friendly interactive maps. http://leafletjs.com
  (c) 2010-2013, Vladimir Agafonkin
@@ -29267,7 +29265,7 @@ L.mapbox = module.exports = {
 
 L.mapbox.markerLayer = L.mapbox.featureLayer;
 
-},{"./package.json":13,"./src/geocoder_control":16,"./src/grid_control":17,"./src/feature_layer":18,"./src/legend_control":19,"./src/share_control":20,"./src/tile_layer":21,"./src/info_control":22,"./src/map":23,"./src/grid_layer":24,"./src/geocoder":25,"./src/marker":26,"./src/simplestyle":14,"./src/config":15,"sanitize-caja":27,"mustache":28}],28:[function(require,module,exports){
+},{"./package.json":12,"./src/geocoder_control":16,"./src/grid_control":17,"./src/feature_layer":18,"./src/legend_control":19,"./src/share_control":20,"./src/tile_layer":21,"./src/info_control":22,"./src/map":23,"./src/grid_layer":24,"./src/geocoder":25,"./src/marker":26,"./src/simplestyle":14,"./src/config":15,"sanitize-caja":27,"mustache":28}],28:[function(require,module,exports){
 (function(){/*!
  * mustache.js - Logic-less {{mustache}} templates with JavaScript
  * http://github.com/janl/mustache.js
@@ -33448,41 +33446,7 @@ module.exports.gridControl = function(_, options) {
     return new GridControl(_, options);
 };
 
-},{"./util":31,"sanitize-caja":27,"mustache":28}],29:[function(require,module,exports){
-'use strict';
-
-var config = require('./config');
-
-// Return the base url of a specific version of Mapbox's API.
-//
-// `hash`, if provided must be a number and is used to distribute requests
-// against multiple `CNAME`s in order to avoid connection limits in browsers
-module.exports = {
-    isSSL: function() {
-        return 'https:' === document.location.protocol || config.FORCE_HTTPS;
-    },
-    base: function() {
-        // By default, use public HTTP urls
-        // Support HTTPS if the user has specified HTTPS urls to use, and this
-        // page is under HTTPS
-        return (this.isSSL() ? config.HTTPS_URLS : config.HTTP_URLS)[0];
-    },
-    // Requests that contain URLs need a secure flag appended
-    // to their URLs so that the server knows to send SSL-ified
-    // resource references.
-    secureFlag: function(url) {
-        if (!this.isSSL()) return url;
-        else if (url.match(/(\?|&)secure/)) return url;
-        else if (url.indexOf('?') !== -1) return url + '&secure';
-        else return url + '?secure';
-    },
-    // Convert a JSONP url to a JSON URL. (Mapbox TileJSON sometimes hardcodes JSONP.)
-    jsonify: function(url) {
-        return url.replace(/\.(geo)?jsonp(?=$|\?)/, '.$1json');
-    }
-};
-
-},{"./config":15}],18:[function(require,module,exports){
+},{"./util":31,"sanitize-caja":27,"mustache":28}],18:[function(require,module,exports){
 'use strict';
 
 var util = require('./util'),
@@ -33598,7 +33562,7 @@ module.exports.featureLayer = function(_, options) {
     return new FeatureLayer(_, options);
 };
 
-},{"./util":31,"./url":29,"./request":32,"./marker":26,"./simplestyle":14,"sanitize-caja":27}],19:[function(require,module,exports){
+},{"./util":31,"./request":32,"./marker":26,"./url":29,"./simplestyle":14,"sanitize-caja":27}],19:[function(require,module,exports){
 'use strict';
 
 var LegendControl = L.Control.extend({
@@ -33879,7 +33843,41 @@ module.exports = {
     createPopup: createPopup
 };
 
-},{"./url":29,"./util":31,"sanitize-caja":27}],32:[function(require,module,exports){
+},{"./url":29,"./util":31,"sanitize-caja":27}],29:[function(require,module,exports){
+'use strict';
+
+var config = require('./config');
+
+// Return the base url of a specific version of Mapbox's API.
+//
+// `hash`, if provided must be a number and is used to distribute requests
+// against multiple `CNAME`s in order to avoid connection limits in browsers
+module.exports = {
+    isSSL: function() {
+        return 'https:' === document.location.protocol || config.FORCE_HTTPS;
+    },
+    base: function() {
+        // By default, use public HTTP urls
+        // Support HTTPS if the user has specified HTTPS urls to use, and this
+        // page is under HTTPS
+        return (this.isSSL() ? config.HTTPS_URLS : config.HTTP_URLS)[0];
+    },
+    // Requests that contain URLs need a secure flag appended
+    // to their URLs so that the server knows to send SSL-ified
+    // resource references.
+    secureFlag: function(url) {
+        if (!this.isSSL()) return url;
+        else if (url.match(/(\?|&)secure/)) return url;
+        else if (url.indexOf('?') !== -1) return url + '&secure';
+        else return url + '?secure';
+    },
+    // Convert a JSONP url to a JSON URL. (Mapbox TileJSON sometimes hardcodes JSONP.)
+    jsonify: function(url) {
+        return url.replace(/\.(geo)?jsonp(?=$|\?)/, '.$1json');
+    }
+};
+
+},{"./config":15}],32:[function(require,module,exports){
 'use strict';
 
 var corslite = require('corslite'),
@@ -34911,5 +34909,5 @@ if (typeof module !== 'undefined') module.exports = xhr;
 }).call(this);
 
 })(window)
-},{}]},{},[1])
+},{}]},{},[5])
 ;
