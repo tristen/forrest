@@ -2,7 +2,8 @@
 <html>
 <head>
   <meta charset='utf-8'>
-  <title></title>
+  <title>Forrest | A friendly geocoder.</title>
+  <link rel='shortcut icon' href='img/favicon.png' type='image/x-icon' />
   <link href='http://fonts.googleapis.com/css?family=Montserrat:700,400' rel='stylesheet' type='text/css'>
   <link rel='stylesheet' href='css/base.css' />
   <link rel='stylesheet' href='site.css' />
@@ -13,12 +14,16 @@
   <div class='limiter center'>
     <a href='/forrest/' class='sprite suitcase logo'>Forrest</a>
   </div>
+
+  <nav class='strong small pad2x'>
+    <a href='#about' class='quiet'>About</a>
+  </nav>
 </header>
 
 <div class='limiter'>
   <div class='clearfix col12 pad4y'>
     <div class='col12'>
-      <h1 class='center js-heading'></h1>
+      <h1 class='center js-heading uppercase'></h1>
       <h4 class='js-sub space-bottom2 center'></h4>
       <input id='import' type='file' class='js-file hidden' name='' value='' />
     </div>
@@ -26,6 +31,24 @@
   </div>
 </div>
 
+<div id='about' class='animate fixed-left col12 modal dark target'>
+  <div class='pin-right pad1'>
+    <a href='#' class='sprite icon x'></a>
+  </div>
+
+  <div class='center pad4y'>
+    <h1 class='styled'>
+      Forrest &mdash; <span class='quiet'>A friendly geocoder.</span>
+    </h1>
+    <p>Uses the <a href='https://mapbox.com'>Mapbox</a> geocoder. Forrest is an open source project. Contribute on <a href='http://github.com/tristen/forrest/'>GitHub</a>.</p>
+    <div class='sprite chocolates'></div>
+  </div>
+</div>
+
 <script src='js/app.js'></script>
+<script>
+  var analytics=analytics||[];(function(){var e=["identify","track","trackLink","trackForm","trackClick","trackSubmit","page","pageview","ab","alias","ready","group"],t=function(e){return function(){analytics.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var n=0;n<e.length;n++)analytics[e[n]]=t(e[n])})(),analytics.load=function(e){var t=document.createElement("script");t.type="text/javascript",t.async=!0,t.src=("https:"===document.location.protocol?"https://":"http://")+"d2dq2ahtl5zl1z.cloudfront.net/analytics.js/v1/"+e+"/analytics.min.js";var n=document.getElementsByTagName("script")[0];n.parentNode.insertBefore(t,n)};
+  analytics.load("ppyh4q5xb3");
+</script>
 </body>
 </html>

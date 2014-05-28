@@ -423,7 +423,7 @@ table.prose th,
 .fr                           { float:right; }
 .fl                           { float:left; }
 .dot                          { border-radius:50%; }
-.quiet                        { color:#7f7f7f; color: rgba(0,0,0,.5); }
+.quiet                        { color:#7f7f7f; color: rgba(0,0,0,.45); }
 .dark .quiet                  { color: #7f7f7f; color: rgba(255,255,255,.5);}
 .center                       { text-align:center; }
 .contain                      { position:relative; }

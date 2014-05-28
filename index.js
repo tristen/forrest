@@ -81,13 +81,12 @@ function init() {
         document.getElementById('import').dispatchEvent(event);
     });
 
-    d3.select('body')
-        .append('div')
-        .classed('pin-bottom tooltip tooltip-bottomright pad0x', true)
+    d3.select('header').select('nav')
+        .append('span')
+        .classed('sprite icon sprocket contain round tooltip', true)
         .append('a')
-        .attr('href', '#')
-        .classed('sprite sprocket contain round', true)
-        .html('<span class="round small pad1 strong">Clear stored Map ID?</span>')
+        .classed('round small pad1', true)
+        .text('Clear stored Map ID?')
         .on('click', function() {
             d3.event.stopPropagation();
             d3.event.preventDefault();

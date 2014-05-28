@@ -82,13 +82,12 @@ function init() {
         document.getElementById('import').dispatchEvent(event);
     });
 
-    d3.select('body')
-        .append('div')
-        .classed('pin-bottom tooltip tooltip-bottomright pad0x', true)
+    d3.select('header').select('nav')
+        .append('span')
+        .classed('sprite icon sprocket contain round tooltip', true)
         .append('a')
-        .attr('href', '#')
-        .classed('sprite sprocket contain round', true)
-        .html('<span class="round small pad1 strong">Clear stored Map ID?</span>')
+        .classed('round small pad1', true)
+        .text('Clear stored Map ID?')
         .on('click', function() {
             d3.event.stopPropagation();
             d3.event.preventDefault();
@@ -30339,7 +30338,7 @@ module.exports.map = function(element, _, options) {
     return new LMap(element, _, options);
 };
 
-},{"./util":31,"./tile_layer":21,"./feature_layer":18,"./grid_layer":24,"./grid_control":17,"./info_control":22,"./share_control":20,"./legend_control":19,"./load_tilejson":30}],24:[function(require,module,exports){
+},{"./util":31,"./tile_layer":21,"./feature_layer":18,"./grid_layer":24,"./info_control":22,"./grid_control":17,"./share_control":20,"./legend_control":19,"./load_tilejson":30}],24:[function(require,module,exports){
 'use strict';
 
 var util = require('./util'),
@@ -33417,7 +33416,7 @@ module.exports.gridControl = function(_, options) {
     return new GridControl(_, options);
 };
 
-},{"./util":31,"sanitize-caja":27,"mustache":28}],29:[function(require,module,exports){
+},{"./util":31,"mustache":28,"sanitize-caja":27}],29:[function(require,module,exports){
 'use strict';
 
 var config = require('./config');
@@ -33451,7 +33450,76 @@ module.exports = {
     }
 };
 
-},{"./config":15}],18:[function(require,module,exports){
+},{"./config":15}],19:[function(require,module,exports){
+'use strict';
+
+var LegendControl = L.Control.extend({
+
+    options: {
+        position: 'bottomright',
+        sanitizer: require('sanitize-caja')
+    },
+
+    initialize: function(options) {
+        L.setOptions(this, options);
+        this._legends = {};
+    },
+
+    onAdd: function(map) {
+        this._container = L.DomUtil.create('div', 'map-legends wax-legends');
+        L.DomEvent.disableClickPropagation(this._container);
+
+        this._update();
+
+        return this._container;
+    },
+
+    addLegend: function(text) {
+        if (!text) { return this; }
+
+        if (!this._legends[text]) {
+            this._legends[text] = 0;
+        }
+
+        this._legends[text]++;
+        return this._update();
+    },
+
+    removeLegend: function(text) {
+        if (!text) { return this; }
+        if (this._legends[text]) this._legends[text]--;
+        return this._update();
+    },
+
+    _update: function() {
+        if (!this._map) { return this; }
+
+        this._container.innerHTML = '';
+        var hide = 'none';
+
+        for (var i in this._legends) {
+            if (this._legends.hasOwnProperty(i) && this._legends[i]) {
+                var div = L.DomUtil.create('div', 'map-legend wax-legend', this._container);
+                div.innerHTML = this.options.sanitizer(i);
+                hide = 'block';
+            }
+        }
+
+        // hide the control entirely unless there is at least one legend;
+        // otherwise there will be a small grey blemish on the map.
+        this._container.style.display = hide;
+
+        return this;
+    }
+});
+
+module.exports.LegendControl = LegendControl;
+
+module.exports.legendControl = function(options) {
+    return new LegendControl(options);
+};
+
+},{"sanitize-caja":27}],18:[function(require,module,exports){
 'use strict';
 
 var util = require('./util'),
@@ -33567,76 +33635,7 @@ module.exports.featureLayer = function(_, options) {
     return new FeatureLayer(_, options);
 };
 
-},{"./util":31,"./url":29,"./request":32,"./marker":26,"./simplestyle":14,"sanitize-caja":27}],19:[function(require,module,exports){
-'use strict';
-
-var LegendControl = L.Control.extend({
-
-    options: {
-        position: 'bottomright',
-        sanitizer: require('sanitize-caja')
-    },
-
-    initialize: function(options) {
-        L.setOptions(this, options);
-        this._legends = {};
-    },
-
-    onAdd: function(map) {
-        this._container = L.DomUtil.create('div', 'map-legends wax-legends');
-        L.DomEvent.disableClickPropagation(this._container);
-
-        this._update();
-
-        return this._container;
-    },
-
-    addLegend: function(text) {
-        if (!text) { return this; }
-
-        if (!this._legends[text]) {
-            this._legends[text] = 0;
-        }
-
-        this._legends[text]++;
-        return this._update();
-    },
-
-    removeLegend: function(text) {
-        if (!text) { return this; }
-        if (this._legends[text]) this._legends[text]--;
-        return this._update();
-    },
-
-    _update: function() {
-        if (!this._map) { return this; }
-
-        this._container.innerHTML = '';
-        var hide = 'none';
-
-        for (var i in this._legends) {
-            if (this._legends.hasOwnProperty(i) && this._legends[i]) {
-                var div = L.DomUtil.create('div', 'map-legend wax-legend', this._container);
-                div.innerHTML = this.options.sanitizer(i);
-                hide = 'block';
-            }
-        }
-
-        // hide the control entirely unless there is at least one legend;
-        // otherwise there will be a small grey blemish on the map.
-        this._container.style.display = hide;
-
-        return this;
-    }
-});
-
-module.exports.LegendControl = LegendControl;
-
-module.exports.legendControl = function(options) {
-    return new LegendControl(options);
-};
-
-},{"sanitize-caja":27}],30:[function(require,module,exports){
+},{"./util":31,"./url":29,"./request":32,"./marker":26,"./simplestyle":14,"sanitize-caja":27}],30:[function(require,module,exports){
 'use strict';
 
 var request = require('./request'),
