@@ -219,7 +219,7 @@ th, td {
   border-radius:3px;
   width:100px;
   text-indent:0;
-  z-index:10;
+  z-index:1001;
   }
   .tooltip a:after {
     content:'';
@@ -292,7 +292,7 @@ a.quiet:hover { color:rgba(0,0,0,0.75); }
 .modal {
   background:#5D85AA;
   top:70px;
-  z-index:1;
+  z-index:1000;
   }
 .target {
   -webkit-transform:translateY(100%);
