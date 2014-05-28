@@ -1,6 +1,6 @@
 ;(function(e,t,n){function i(n,s){if(!t[n]){if(!e[n]){var o=typeof require=="function"&&require;if(!s&&o)return o(n,!0);if(r)return r(n,!0);throw new Error("Cannot find module '"+n+"'")}var u=t[n]={exports:{}};e[n][0].call(u.exports,function(t){var r=e[n][1][t];return i(r?r:t)},u,u.exports)}return t[n].exports}var r=typeof require=="function"&&require;for(var s=0;s<n.length;s++)i(n[s]);return i})({1:[function(require,module,exports){
-d3 = require('d3');
 require('mapbox.js');
+d3 = require('d3');
 var geocode = require('geocode-many');
 var geojson = require('geojson');
 var metatable = require('d3-metatable')(d3);
@@ -203,7 +203,6 @@ d3.select('.js-file')
 
                             // Initialize a map here.
                             map = L.mapbox.map('map', mapid);
-                            markers = L.mapbox.featureLayer().addTo(map);
                         }
                     });
             });
@@ -243,19 +242,23 @@ function transform(obj) {
     return obj.name;
 }
 
+function editTable() {
+    return metatable({
+        newCol: false,
+        deleteCol: false,
+        renameCol: false
+    }).on('change', function(d, i) {
+        data[i] = d;
+    });
+}
+
 function done(err, res) {
     d3.select('table').remove();
     d3.select('.views')
         .insert('div')
         .classed('editable prose active col12 table', true)
         .data([data])
-        .call(metatable({
-            newCol: false,
-            deleteCol: false,
-            renameCol: false
-        }).on('change', function(d, i) {
-            data[i] = d;
-        }));
+        .call(editTable());
 
     if (err.length) {
         h1('There was a problem geocoding! <a href="/">Try again?</a>.');
@@ -320,17 +323,46 @@ function done(err, res) {
             if (view === 'map') {
                 map.invalidateSize();
                 geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
-                    markers.setGeoJSON(gj);
-                    markers.eachLayer(function(m) {
-                        var props = m.feature.properties;
-                        var content = '<nav>';
+
+                    // Remove Previous
+                    if (markers) map.removeLayer(markers);
+                    markers = new L.FeatureGroup();
+
+                    for (var i = 0; i < gj.features.length; i++) {
+                        var m = gj.features[i];
+                        var c = m.geometry.coordinates;
+                        var p = m.properties;
+                        var marker = L.marker([c[1], c[0]], {
+                            icon: L.mapbox.marker.icon({
+                                'marker-color': '#f86767',
+                            }),
+                            draggable: true
+                        })
+                        .on('dragend', function(e) {
+                            var newCoords = this.getLatLng();
+                            var d = data[this.indexInData];
+
+                            d.latitude = newCoords['lat'];
+                            d.longitude = newCoords['lng'];
+                            d3.select('.table').data([data]).call(editTable());
+                        })
+                        .addTo(map);
+
+                        marker.indexInData = i;
+                        marker.bindPopup(content(p));
+                        markers.addLayer(marker);
+                    }
+
+                    function content(props) {
+                        var html = '<nav>';
                         for (var key in props) {
-                            content += '<div><strong>' + key + '</strong>: ' + props[key] + '</div>';
+                            html += '<div><strong>' + key + '</strong>: ' + props[key] + '</div>';
                         }
-                        content += '</nav>';
-                        m.bindPopup(content);
-                    });
-                    map.fitBounds(markers.getBounds());
+                        html += '</nav>';
+                        return html;
+                    }
+
+                    map.addLayer(markers).fitBounds(markers.getBounds());
                 });
             }
         });
@@ -387,7 +419,7 @@ function detectType(f) {
     }
 }
 
-},{"d3":2,"mapbox.js":3,"geocode-many":4,"d3-metatable":5,"filesaver.js":6,"wookie":7,"geojson":8}],2:[function(require,module,exports){
+},{"mapbox.js":2,"d3":3,"geocode-many":4,"d3-metatable":5,"filesaver.js":6,"wookie":7,"geojson":8}],3:[function(require,module,exports){
 !function() {
   var d3 = {
     version: "3.4.6"
@@ -10375,7 +10407,7 @@ if (typeof module !== 'undefined') module.exports = wookie;
   }
 
 }(typeof module == 'object' ? module.exports : window.GeoJSON = {}));
-},{}],3:[function(require,module,exports){
+},{}],2:[function(require,module,exports){
 require('./leaflet');
 require('./mapbox');
 
@@ -19910,7 +19942,7 @@ function geocodemany(mapid, throttle) {
 });
 ;
 })(window)
-},{"queue-async":12,"d3":2}],13:[function(require,module,exports){
+},{"queue-async":12,"d3":3}],13:[function(require,module,exports){
 module.exports={
   "author": "Mapbox",
   "name": "mapbox.js",
@@ -30338,7 +30370,7 @@ module.exports.map = function(element, _, options) {
     return new LMap(element, _, options);
 };
 
-},{"./util":31,"./tile_layer":21,"./feature_layer":18,"./grid_layer":24,"./info_control":22,"./grid_control":17,"./share_control":20,"./legend_control":19,"./load_tilejson":30}],24:[function(require,module,exports){
+},{"./util":31,"./tile_layer":21,"./feature_layer":18,"./grid_layer":24,"./grid_control":17,"./info_control":22,"./share_control":20,"./legend_control":19,"./load_tilejson":30}],24:[function(require,module,exports){
 'use strict';
 
 var util = require('./util'),
@@ -33416,7 +33448,7 @@ module.exports.gridControl = function(_, options) {
     return new GridControl(_, options);
 };
 
-},{"./util":31,"mustache":28,"sanitize-caja":27}],29:[function(require,module,exports){
+},{"./util":31,"sanitize-caja":27,"mustache":28}],29:[function(require,module,exports){
 'use strict';
 
 var config = require('./config');
@@ -33450,76 +33482,7 @@ module.exports = {
     }
 };
 
-},{"./config":15}],19:[function(require,module,exports){
-'use strict';
-
-var LegendControl = L.Control.extend({
-
-    options: {
-        position: 'bottomright',
-        sanitizer: require('sanitize-caja')
-    },
-
-    initialize: function(options) {
-        L.setOptions(this, options);
-        this._legends = {};
-    },
-
-    onAdd: function(map) {
-        this._container = L.DomUtil.create('div', 'map-legends wax-legends');
-        L.DomEvent.disableClickPropagation(this._container);
-
-        this._update();
-
-        return this._container;
-    },
-
-    addLegend: function(text) {
-        if (!text) { return this; }
-
-        if (!this._legends[text]) {
-            this._legends[text] = 0;
-        }
-
-        this._legends[text]++;
-        return this._update();
-    },
-
-    removeLegend: function(text) {
-        if (!text) { return this; }
-        if (this._legends[text]) this._legends[text]--;
-        return this._update();
-    },
-
-    _update: function() {
-        if (!this._map) { return this; }
-
-        this._container.innerHTML = '';
-        var hide = 'none';
-
-        for (var i in this._legends) {
-            if (this._legends.hasOwnProperty(i) && this._legends[i]) {
-                var div = L.DomUtil.create('div', 'map-legend wax-legend', this._container);
-                div.innerHTML = this.options.sanitizer(i);
-                hide = 'block';
-            }
-        }
-
-        // hide the control entirely unless there is at least one legend;
-        // otherwise there will be a small grey blemish on the map.
-        this._container.style.display = hide;
-
-        return this;
-    }
-});
-
-module.exports.LegendControl = LegendControl;
-
-module.exports.legendControl = function(options) {
-    return new LegendControl(options);
-};
-
-},{"sanitize-caja":27}],18:[function(require,module,exports){
+},{"./config":15}],18:[function(require,module,exports){
 'use strict';
 
 var util = require('./util'),
@@ -33635,7 +33598,76 @@ module.exports.featureLayer = function(_, options) {
     return new FeatureLayer(_, options);
 };
 
-},{"./util":31,"./url":29,"./request":32,"./marker":26,"./simplestyle":14,"sanitize-caja":27}],30:[function(require,module,exports){
+},{"./util":31,"./url":29,"./request":32,"./marker":26,"./simplestyle":14,"sanitize-caja":27}],19:[function(require,module,exports){
+'use strict';
+
+var LegendControl = L.Control.extend({
+
+    options: {
+        position: 'bottomright',
+        sanitizer: require('sanitize-caja')
+    },
+
+    initialize: function(options) {
+        L.setOptions(this, options);
+        this._legends = {};
+    },
+
+    onAdd: function(map) {
+        this._container = L.DomUtil.create('div', 'map-legends wax-legends');
+        L.DomEvent.disableClickPropagation(this._container);
+
+        this._update();
+
+        return this._container;
+    },
+
+    addLegend: function(text) {
+        if (!text) { return this; }
+
+        if (!this._legends[text]) {
+            this._legends[text] = 0;
+        }
+
+        this._legends[text]++;
+        return this._update();
+    },
+
+    removeLegend: function(text) {
+        if (!text) { return this; }
+        if (this._legends[text]) this._legends[text]--;
+        return this._update();
+    },
+
+    _update: function() {
+        if (!this._map) { return this; }
+
+        this._container.innerHTML = '';
+        var hide = 'none';
+
+        for (var i in this._legends) {
+            if (this._legends.hasOwnProperty(i) && this._legends[i]) {
+                var div = L.DomUtil.create('div', 'map-legend wax-legend', this._container);
+                div.innerHTML = this.options.sanitizer(i);
+                hide = 'block';
+            }
+        }
+
+        // hide the control entirely unless there is at least one legend;
+        // otherwise there will be a small grey blemish on the map.
+        this._container.style.display = hide;
+
+        return this;
+    }
+});
+
+module.exports.LegendControl = LegendControl;
+
+module.exports.legendControl = function(options) {
+    return new LegendControl(options);
+};
+
+},{"sanitize-caja":27}],30:[function(require,module,exports){
 'use strict';
 
 var request = require('./request'),
