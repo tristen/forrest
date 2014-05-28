@@ -306,3 +306,6 @@ a.quiet:hover { color:rgba(0,0,0,0.75); }
         -ms-transform:translateY(0);
             transform:translateY(0);
     }
+  .target:target ~ * {
+    display:none;
+    }
