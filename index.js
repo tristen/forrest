@@ -1,5 +1,5 @@
-d3 = require('d3');
 require('mapbox.js');
+d3 = require('d3');
 var geocode = require('geocode-many');
 var geojson = require('geojson');
 var metatable = require('d3-metatable')(d3);
@@ -202,7 +202,6 @@ d3.select('.js-file')
 
                             // Initialize a map here.
                             map = L.mapbox.map('map', mapid);
-                            markers = L.mapbox.featureLayer().addTo(map);
                         }
                     });
             });
@@ -242,19 +241,23 @@ function transform(obj) {
     return obj.name;
 }
 
+function editTable() {
+    return metatable({
+        newCol: false,
+        deleteCol: false,
+        renameCol: false
+    }).on('change', function(d, i) {
+        data[i] = d;
+    });
+}
+
 function done(err, res) {
     d3.select('table').remove();
     d3.select('.views')
         .insert('div')
         .classed('editable prose active col12 table', true)
         .data([data])
-        .call(metatable({
-            newCol: false,
-            deleteCol: false,
-            renameCol: false
-        }).on('change', function(d, i) {
-            data[i] = d;
-        }));
+        .call(editTable());
 
     if (err.length) {
         h1('There was a problem geocoding! <a href="/">Try again?</a>.');
@@ -319,17 +322,46 @@ function done(err, res) {
             if (view === 'map') {
                 map.invalidateSize();
                 geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
-                    markers.setGeoJSON(gj);
-                    markers.eachLayer(function(m) {
-                        var props = m.feature.properties;
-                        var content = '<nav>';
+
+                    // Remove Previous
+                    if (markers) map.removeLayer(markers);
+                    markers = new L.FeatureGroup();
+
+                    for (var i = 0; i < gj.features.length; i++) {
+                        var m = gj.features[i];
+                        var c = m.geometry.coordinates;
+                        var p = m.properties;
+                        var marker = L.marker([c[1], c[0]], {
+                            icon: L.mapbox.marker.icon({
+                                'marker-color': '#f86767',
+                            }),
+                            draggable: true
+                        })
+                        .on('dragend', function(e) {
+                            var newCoords = this.getLatLng();
+                            var d = data[this.indexInData];
+
+                            d.latitude = newCoords['lat'];
+                            d.longitude = newCoords['lng'];
+                            d3.select('.table').data([data]).call(editTable());
+                        })
+                        .addTo(map);
+
+                        marker.indexInData = i;
+                        marker.bindPopup(content(p));
+                        markers.addLayer(marker);
+                    }
+
+                    function content(props) {
+                        var html = '<nav>';
                         for (var key in props) {
-                            content += '<div><strong>' + key + '</strong>: ' + props[key] + '</div>';
+                            html += '<div><strong>' + key + '</strong>: ' + props[key] + '</div>';
                         }
-                        content += '</nav>';
-                        m.bindPopup(content);
-                    });
-                    map.fitBounds(markers.getBounds());
+                        html += '</nav>';
+                        return html;
+                    }
+
+                    map.addLayer(markers).fitBounds(markers.getBounds());
                 });
             }
         });
