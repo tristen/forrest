@@ -327,7 +327,10 @@ function done(err, res) {
 
                     for (var i = 0; i < gj.features.length; i++) {
                         var m = gj.features[i];
-                        var c = m.geometry.coordinates;
+                        var c = (m.geometry.coordinates) ?
+                            m.geometry.coordinates :
+                            [0, 0];
+
                         var p = m.properties;
                         var marker = L.marker([c[1], c[0]], {
                             icon: L.mapbox.marker.icon({
