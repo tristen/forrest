@@ -27,7 +27,7 @@ if (!cookie.get('mapid')) {
 
     var form = d3.select('.js-output')
         .append('div')
-        .classed('col6 margin3 pad2y pill', true);
+        .classed('col4 margin4 pad2y pill', true);
 
     form.append('input')
         .attr('type', 'text')
@@ -37,7 +37,7 @@ if (!cookie.get('mapid')) {
     form.append('a')
         .attr('href', '#')
         .text('submit')
-        .classed('button fill-green pad1 col4', true)
+        .classed('button fill-green pad1 col3', true)
         .on('click', function() {
             var val;
             d3.event.stopPropagation();
@@ -71,7 +71,7 @@ function init() {
     .html('')
     .append('a')
     .attr('href', '#')
-    .classed('button fill-green round pad2 col6 margin3', true)
+    .classed('button fill-green round pad2 col4 margin4', true)
     .text('Add')
     .on('click', function() {
         d3.event.stopPropagation();
@@ -120,7 +120,7 @@ d3.select('.js-file')
                     .data(displayData)
                     .enter()
                     .append('div')
-                    .classed('pad0 col4', true)
+                    .classed('pad0 col3', true)
                     .html(function(d) {
                         return '<input type="checkbox" id="' + cleanStr(d.label) + '" value="' + d.label + '">' +
                         '<label class="keyline-all pad1 round" for="' + cleanStr(d.label) + '">' + d.label +
@@ -136,7 +136,7 @@ d3.select('.js-file')
                 output.append('div')
                     .classed('pad2y col12 clearfix', true)
                     .append('a')
-                    .classed('button fill-green col6 margin3 pad2 round', true)
+                    .classed('button fill-green col4 margin4 pad2 round', true)
                     .text('Geocode')
                     .attr('href', '#')
                     .on('click', function() {
@@ -253,7 +253,7 @@ function done(err, res) {
     d3.select('table').remove();
     d3.select('.views')
         .insert('div')
-        .classed('editable prose active col12 table', true)
+        .classed('editable prose active col12 table keyline-all', true)
         .data([data])
         .call(editTable());
 
@@ -273,7 +273,7 @@ function done(err, res) {
         .classed('col12 clearfix contain z10', true);
 
     var options = exportOps.append('select')
-        .classed('margin3 col6', true)
+        .classed('margin4 col4', true)
         .on('change', function() {
             if (this.value) {
                 var exportName = (this.value === 'csv') ? fileName + '-geocoded' : fileName;
