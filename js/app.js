@@ -373,6 +373,16 @@ function exportData(method) {
     var v;
     if (method === 'geojson') {
         geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
+
+            // Iterate over the set and make sure there is
+            // at least a geometry.coordinates value.
+            for (var i = 0; i < gj.features.length; i++) {
+                var feature = gj.features[i];
+                if (!feature.geometry.coordinates) {
+                    feature.geometry.coordinates = [0, 0];
+                }
+            }
+
             v =  JSON.stringify(gj);
         });
     } else if (method === 'csv') {
@@ -9922,78 +9932,6 @@ function metatable(options) {
     return d3.rebind(table, event, 'on');
 }
 
-},{}],7:[function(require,module,exports){
-function tryParse(obj) {
-    try {
-        return JSON.parse(obj);
-    } catch (e) {}
-
-    return obj;
-}
-
-function tryStringify(obj) {
-    if (typeof obj !== 'object' || !JSON.stringify) return obj;
-    return JSON.stringify(obj);
-}
-
-var wookie = {};
-
-wookie.set = function(name, value, expires, path, domain) {
-    var pair = escape(name) + '=' + escape(tryStringify(value));
-
-    if (!!expires) {
-        if (expires.constructor === Number) pair += ';max-age=' + expires;
-        else if (expires.constructor === String) pair += ';expires=' + expires;
-        else if (expires.constructor === Date) pair += ';expires=' + expires.toUTCString();
-    }
-
-    pair += ';path=' + ((!!path) ? path : '/');
-    if (!!domain) pair += ';domain=' + domain;
-
-    document.cookie = pair;
-    return this;
-};
-
-wookie.setObject = function(object, expires, path, domain) {
-    for (var key in object) this.set(key, object[key], expires, path, domain);
-    return this;
-};
-
-wookie.get = function(name) {
-    var obj = this.getObject();
-    return obj[name];
-};
-
-wookie.getObject = function() {
-    var pairs = document.cookie.split(/;\s?/i);
-    var object = {};
-    var pair;
-
-    for (var i in pairs) {
-        if (typeof pairs[i] === 'string') {
-            pair = pairs[i].split('=');
-            if (pair.length <= 1) continue;
-            object[unescape(pair[0])] = tryParse(unescape(pair[1]));
-        }
-    }
-
-    return object;
-};
-
-wookie.unset = function(name) {
-    var date = new Date(0);
-    document.cookie = name + '=; expires=' + date.toUTCString();
-    return this;
-};
-
-wookie.clear = function() {
-    var obj = this.getObject();
-    for (var key in obj) this.unset(key);
-    return obj;
-};
-
-if (typeof module !== 'undefined') module.exports = wookie;
-
 },{}],6:[function(require,module,exports){
 (function(){/* FileSaver.js
  * A saveAs() FileSaver implementation.
@@ -10215,6 +10153,78 @@ var saveAs = saveAs
 if (typeof module !== 'undefined') module.exports = saveAs;
 
 })()
+},{}],7:[function(require,module,exports){
+function tryParse(obj) {
+    try {
+        return JSON.parse(obj);
+    } catch (e) {}
+
+    return obj;
+}
+
+function tryStringify(obj) {
+    if (typeof obj !== 'object' || !JSON.stringify) return obj;
+    return JSON.stringify(obj);
+}
+
+var wookie = {};
+
+wookie.set = function(name, value, expires, path, domain) {
+    var pair = escape(name) + '=' + escape(tryStringify(value));
+
+    if (!!expires) {
+        if (expires.constructor === Number) pair += ';max-age=' + expires;
+        else if (expires.constructor === String) pair += ';expires=' + expires;
+        else if (expires.constructor === Date) pair += ';expires=' + expires.toUTCString();
+    }
+
+    pair += ';path=' + ((!!path) ? path : '/');
+    if (!!domain) pair += ';domain=' + domain;
+
+    document.cookie = pair;
+    return this;
+};
+
+wookie.setObject = function(object, expires, path, domain) {
+    for (var key in object) this.set(key, object[key], expires, path, domain);
+    return this;
+};
+
+wookie.get = function(name) {
+    var obj = this.getObject();
+    return obj[name];
+};
+
+wookie.getObject = function() {
+    var pairs = document.cookie.split(/;\s?/i);
+    var object = {};
+    var pair;
+
+    for (var i in pairs) {
+        if (typeof pairs[i] === 'string') {
+            pair = pairs[i].split('=');
+            if (pair.length <= 1) continue;
+            object[unescape(pair[0])] = tryParse(unescape(pair[1]));
+        }
+    }
+
+    return object;
+};
+
+wookie.unset = function(name) {
+    var date = new Date(0);
+    document.cookie = name + '=; expires=' + date.toUTCString();
+    return this;
+};
+
+wookie.clear = function() {
+    var obj = this.getObject();
+    for (var key in obj) this.unset(key);
+    return obj;
+};
+
+if (typeof module !== 'undefined') module.exports = wookie;
+
 },{}],8:[function(require,module,exports){
 (function(GeoJSON) {
   GeoJSON.version = '0.1.5';
@@ -29268,7 +29278,7 @@ L.mapbox = module.exports = {
 
 L.mapbox.markerLayer = L.mapbox.featureLayer;
 
-},{"./package.json":13,"./src/geocoder_control":16,"./src/grid_control":17,"./src/feature_layer":18,"./src/legend_control":19,"./src/share_control":20,"./src/tile_layer":21,"./src/info_control":22,"./src/map":23,"./src/grid_layer":24,"./src/geocoder":25,"./src/marker":26,"./src/simplestyle":14,"./src/config":15,"mustache":27,"sanitize-caja":28}],27:[function(require,module,exports){
+},{"./package.json":13,"./src/geocoder_control":16,"./src/grid_control":17,"./src/feature_layer":18,"./src/legend_control":19,"./src/share_control":20,"./src/tile_layer":21,"./src/info_control":22,"./src/map":23,"./src/grid_layer":24,"./src/geocoder":25,"./src/marker":26,"./src/simplestyle":14,"./src/config":15,"sanitize-caja":27,"mustache":28}],28:[function(require,module,exports){
 (function(){/*!
  * mustache.js - Logic-less {{mustache}} templates with JavaScript
  * http://github.com/janl/mustache.js
@@ -30781,7 +30791,7 @@ module.exports = function(data) {
     };
 };
 
-},{}],28:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 var html_sanitize = require('./sanitizer-bundle.js');
 
 module.exports = function(_) {
@@ -33449,7 +33459,7 @@ module.exports.gridControl = function(_, options) {
     return new GridControl(_, options);
 };
 
-},{"./util":31,"mustache":27,"sanitize-caja":28}],29:[function(require,module,exports){
+},{"./util":31,"mustache":28,"sanitize-caja":27}],29:[function(require,module,exports){
 'use strict';
 
 var config = require('./config');
@@ -33599,7 +33609,7 @@ module.exports.featureLayer = function(_, options) {
     return new FeatureLayer(_, options);
 };
 
-},{"./util":31,"./url":29,"./request":32,"./marker":26,"./simplestyle":14,"sanitize-caja":28}],19:[function(require,module,exports){
+},{"./util":31,"./url":29,"./request":32,"./marker":26,"./simplestyle":14,"sanitize-caja":27}],19:[function(require,module,exports){
 'use strict';
 
 var LegendControl = L.Control.extend({
@@ -33668,7 +33678,7 @@ module.exports.legendControl = function(options) {
     return new LegendControl(options);
 };
 
-},{"sanitize-caja":28}],30:[function(require,module,exports){
+},{"sanitize-caja":27}],30:[function(require,module,exports){
 'use strict';
 
 var request = require('./request'),
@@ -33813,7 +33823,7 @@ module.exports.infoControl = function(options) {
     return new InfoControl(options);
 };
 
-},{"sanitize-caja":28}],26:[function(require,module,exports){
+},{"sanitize-caja":27}],26:[function(require,module,exports){
 'use strict';
 
 var url = require('./url'),
@@ -33880,7 +33890,7 @@ module.exports = {
     createPopup: createPopup
 };
 
-},{"./url":29,"./util":31,"sanitize-caja":28}],32:[function(require,module,exports){
+},{"./url":29,"./util":31,"sanitize-caja":27}],32:[function(require,module,exports){
 'use strict';
 
 var corslite = require('corslite'),

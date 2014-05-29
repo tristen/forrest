@@ -372,6 +372,16 @@ function exportData(method) {
     var v;
     if (method === 'geojson') {
         geojson.parse(data, {Point: ['latitude', 'longitude']}, function(gj) {
+
+            // Iterate over the set and make sure there is
+            // at least a geometry.coordinates value.
+            for (var i = 0; i < gj.features.length; i++) {
+                var feature = gj.features[i];
+                if (!feature.geometry.coordinates) {
+                    feature.geometry.coordinates = [0, 0];
+                }
+            }
+
             v =  JSON.stringify(gj);
         });
     } else if (method === 'csv') {
