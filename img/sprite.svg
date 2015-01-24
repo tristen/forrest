@@ -13,7 +13,7 @@
    height="110"
    id="svg5607"
    version="1.1"
-   inkscape:version="0.48.2 r9819"
+   inkscape:version="0.48.5 r10040"
    sodipodi:docname="sprite.svg"
    inkscape:export-filename="/Users/tristen/dev/github/forrest/img/sprite@2x.png"
    inkscape:export-xdpi="180"
@@ -28,13 +28,13 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="4"
-     inkscape:cx="56.879329"
+     inkscape:cx="42.379329"
      inkscape:cy="65.917601"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="true"
      inkscape:window-width="1280"
-     inkscape:window-height="752"
+     inkscape:window-height="751"
      inkscape:window-x="0"
      inkscape:window-y="0"
      inkscape:window-maximized="1">
@@ -58,7 +58,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -86,7 +86,7 @@
        y="982.36218" />
     <path
        style="color:#000000;fill:#404040;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
-       d="m 19,954.3622 -0.8125,2.2813 c -0.311945,0.099 -0.618679,0.2289 -0.90625,0.375 L 15,956.3622 l -1,1 0.65625,2.2813 c -0.146021,0.2875 -0.276276,0.5943 -0.375,0.9062 L 12,961.3622 l 0,2 2.28125,0.8125 c 0.09872,0.3119 0.228979,0.6187 0.375,0.9063 L 14,967.3622 l 1,1 2.28125,-0.6562 c 0.287571,0.146 0.594305,0.2762 0.90625,0.375 l 0.8125,2.2812 2,0 0.8125,-2.2812 c 0.311945,-0.099 0.618679,-0.229 0.90625,-0.375 L 25,968.3622 l 1,-1 -0.65625,-2.2812 c 0.146021,-0.2876 0.276276,-0.5944 0.375,-0.9063 L 28,963.3622 l 0,-2 -2.28125,-0.8125 c -0.09872,-0.3119 -0.228979,-0.6187 -0.375,-0.9062 L 26,957.3622 l -1,-1 -2.28125,0.6563 c -0.287571,-0.1461 -0.594305,-0.2763 -0.90625,-0.375 L 21,954.3622 z m 1,6 c 1.104569,0 2,0.8954 2,2 0,1.1046 -0.895431,2 -2,2 -1.104569,0 -2,-0.8954 -2,-2 0,-1.1046 0.895431,-2 2,-2 z"
+       d="m 19.125,955.3622 -0.710938,1.99614 c -0.272951,0.0866 -0.541344,0.20028 -0.792968,0.32812 L 15.625,957.1122 l -0.875,0.875 0.574219,1.99614 c -0.127769,0.25156 -0.241742,0.52001 -0.328125,0.79292 L 13,961.4872 l 0,1.75 1.996094,0.71094 c 0.08638,0.27291 0.200356,0.54136 0.328125,0.79301 L 14.75,966.7372 l 0.875,0.875 1.996094,-0.57418 c 0.251624,0.12775 0.520017,0.24168 0.792968,0.32813 l 0.710938,1.99605 1.75,0 0.710937,-1.99605 c 0.272952,-0.0866 0.541345,-0.20038 0.792969,-0.32813 l 1.996094,0.57418 0.875,-0.875 -0.574219,-1.99605 c 0.127769,-0.25165 0.241742,-0.5201 0.328125,-0.79301 L 27,963.2372 l 0,-1.75 -1.996094,-0.71094 c -0.08638,-0.27291 -0.200356,-0.54136 -0.328125,-0.79292 L 25.25,957.9872 l -0.875,-0.875 -1.996094,0.57426 c -0.251624,-0.12784 -0.520017,-0.24176 -0.792969,-0.32812 L 20.875,955.3622 z m 0.875,5.25 c 0.966498,0 1.75,0.78347 1.75,1.75 0,0.96652 -0.783502,1.75 -1.75,1.75 -0.966498,0 -1.75,-0.78348 -1.75,-1.75 0,-0.96653 0.783502,-1.75 1.75,-1.75 z"
        id="path7175"
        inkscape:connector-curvature="0"
        sodipodi:nodetypes="cccccccccccccccccccccccccccccccccsssss" />
@@ -168,7 +168,7 @@
          y="1028.3622"
          style="font-size:28px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;fill:#404040;fill-opacity:0;font-family:French111 BT;-inkscape-font-specification:French111 BT">Forrest</tspan></text>
     <path
-       style="color:#000000;fill:#404040;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
+       style="color:#000000;fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate"
        d="m 55,955.3622 -2,2 5,5 -5,5 2,2 5,-5 5,5 2,-2 -5,-5 5,-5 -2,-2 -5,5 z"
        id="rect4674"
        inkscape:connector-curvature="0"

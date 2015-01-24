@@ -27,7 +27,6 @@ h4 {
   font-size:16px;
   line-height:24px;
   font-weight:normal;
-  color:rgba(0,0,0,0.5);
   }
 a {
   color:#5D85AA;
@@ -123,6 +122,10 @@ table {
   table-layout:fixed;
   border:none;
   }
+table td input[value='0'] {
+  font-size:42px;
+}
+
 th, td {
   width:120px;
   text-overflow:ellipsis;
@@ -229,7 +232,7 @@ th, td {
     }
   .tooltip:hover a { display:block; }
   .tooltip a:hover {
-    background-color:#4f4f4f;
+    background-color:#5d85aa;
     }
   .tooltip a {
     right:0;
@@ -243,7 +246,7 @@ th, td {
       right:15px;
       }
     .tooltip a:hover:after {
-      border-bottom-color:#4f4f4f;
+      border-bottom-color:#5d85aa;
       }
 
   .tooltip-topleft span {

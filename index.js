@@ -26,17 +26,17 @@ if (!localStorage.getItem('token')) {
 
     var form = d3.select('.js-output')
         .append('div')
-        .classed('col4 margin4 pad2y pill', true);
+        .attr('class', 'col4 margin4 pad2y pill');
 
     form.append('input')
         .attr('type', 'text')
         .attr('placeholder', 'AccessToken')
-        .classed('pad1 col8', true);
+        .attr('class', 'pad1 col8');
 
     form.append('a')
         .attr('href', '#')
         .text('submit')
-        .classed('button fill-green pad1 col3', true)
+        .attr('class', 'button fill-green pad1 col3')
         .on('click', function() {
             var val;
             d3.event.stopPropagation();
@@ -70,7 +70,7 @@ function init() {
     .html('')
     .append('a')
     .attr('href', '#')
-    .classed('button fill-green round pad2 col4 margin4', true)
+    .attr('class', 'button fill-green round pad2 col4 margin4')
     .text('Add')
     .on('click', function() {
         d3.event.stopPropagation();
@@ -82,16 +82,16 @@ function init() {
 
     d3.select('header').select('nav')
         .append('span')
-        .classed('sprite icon sprocket contain round tooltip', true)
+        .attr('class', 'sprite icon sprocket contain round tooltip')
         .append('a')
-        .classed('round small pad1', true)
-        .text('Clear stored Map ID?')
-        .on('click', function() {
-            d3.event.stopPropagation();
-            d3.event.preventDefault();
-            localStorage.removeItem('token');
-            location.reload();
-        });
+          .attr('class', 'round small pad1')
+          .text('Clear stored Map ID?')
+          .on('click', function() {
+              d3.event.stopPropagation();
+              d3.event.preventDefault();
+              localStorage.removeItem('token');
+              location.reload();
+          });
 }
 
 d3.select('.js-file')
@@ -112,18 +112,25 @@ d3.select('.js-file')
                     displayData.push({ label: k, val: data[0][k] });
                 }
                 h1('Choose fields');
-                sub('Select the columns that contain address information you want to geocode');
+                sub('<strong>Only</strong> select the columns that contain address information you want to geocode.');
                 var output = d3.select('.js-output');
                     output.html('');
                     output.selectAll('div')
                     .data(displayData)
                     .enter()
                     .append('div')
-                    .classed('pad0 col3', true)
+                    .attr('class', function() {
+                        var num = 3;
+                        var cols = displayData.length;
+                        if (cols === 3) num = 4;
+                        if (cols === 2) num = 6;
+                        if (cols === 1) num = 12;
+                        return 'pad0 col' + num;
+                    })
                     .html(function(d) {
                         return '<input type="checkbox" id="' + cleanStr(d.label) + '" value="' + d.label + '">' +
-                        '<label class="keyline-all pad1 round" for="' + cleanStr(d.label) + '">' + d.label +
-                        '<span class="block small normal quiet">' + d.val + '</em></span>';
+                        '<label class="keyline-all pad1 round truncate" for="' + cleanStr(d.label) + '">' + d.label +
+                        '<span class="block small normal quiet truncate">' + d.val + '</em></span>';
                     })
                     .selectAll('input')
                     .on('change', function() {
@@ -133,9 +140,9 @@ d3.select('.js-file')
                     });
 
                 output.append('div')
-                    .classed('pad2y col12 clearfix', true)
+                    .attr('class', 'pad2y col12 clearfix')
                     .append('a')
-                    .classed('button fill-green col4 margin4 pad2 round', true)
+                    .attr('class', 'button fill-green col4 margin4 pad2 round')
                     .text('Geocode')
                     .attr('href', '#')
                     .on('click', function() {
@@ -158,10 +165,10 @@ d3.select('.js-file')
 
                             var p = d3.select('.js-output')
                                 .append('div')
-                                .classed('progress round-top fill-darken pad0 contain', true);
+                                .attr('class', 'progress round-top fill-darken pad0 contain');
 
                                 p.append('div')
-                                    .classed('fill fill-blue pin-left', true);
+                                    .attr('class', 'fill fill-blue pin-left');
 
                             displayData.push({
                                     label: 'Latitude'
@@ -172,11 +179,11 @@ d3.select('.js-file')
                             // Map and table views
                             var views = d3.select('.js-output')
                                 .append('div')
-                                .classed('clip views', true);
+                                .attr('class', 'clip views');
 
                             var table = views
                                 .append('table')
-                                .classed('prose active col12 table', true);
+                                .attr('class', 'prose active col12 table');
 
                             table.append('thead')
                                 .append('tr')
@@ -195,7 +202,7 @@ d3.select('.js-file')
                             views
                                 .append('div')
                                 .attr('id', 'map')
-                                .classed('map row10 col12', true);
+                                .attr('class', 'map row10 col12');
 
                             // Initialize a map here.
                             L.mapbox.accessToken = localStorage.getItem('token');
@@ -211,17 +218,18 @@ d3.select('.js-file')
 function progress(e) {
     var row = data[e.done - 1];
     var results = (e.data) ? e.data.features : undefined;
-
     if (results && results.length) {
         row.latitude = results[0].center[1];
         row.longitude = results[0].center[0];
         row.type = results[0].type;
+    } else {
+        row.latitude = row.longitude = 0;
+        row.type = '';
     }
 
     d3.select('table')
         .select('tbody')
         .append('tr')
-        .classed(e.status, true)
         .selectAll('td')
         .data(d3.values(row))
         .enter()
@@ -253,7 +261,7 @@ function done(err, res) {
     d3.select('table').remove();
     d3.select('.views')
         .insert('div')
-        .classed('editable prose active col12 table keyline-all', true)
+        .attr('class', 'editable prose active col12 table keyline-all')
         .data([data])
         .call(editTable());
 
@@ -270,10 +278,10 @@ function done(err, res) {
 
     var exportOps = d3.select('.js-output')
         .insert('div', '.progress')
-        .classed('col12 clearfix contain z10', true);
+        .attr('class', 'col12 clearfix contain z10');
 
     var options = exportOps.append('select')
-        .classed('margin4 col4', true)
+        .attr('class', 'margin4 col4')
         .on('change', function() {
             if (this.value) {
                 var exportName = (this.value === 'csv') ? fileName + '-geocoded' : fileName;
@@ -292,7 +300,7 @@ function done(err, res) {
 
     // Toggle controls to view table/map.
     var toggle = exportOps.append('div')
-        .classed('js-toggle toggle col2 margin5 pad1y inline center', true)
+        .attr('class', 'js-toggle toggle col2 margin5 pad1y inline center')
         .selectAll('a')
         .data(['Table', 'Map'])
         .enter()
@@ -341,9 +349,8 @@ function done(err, res) {
                         .on('dragend', function(e) {
                             var newCoords = this.getLatLng();
                             var d = data[this.indexInData];
-
-                            d.latitude = newCoords['lat'];
-                            d.longitude = newCoords['lng'];
+                            d.latitude = newCoords.lat;
+                            d.longitude = newCoords.lng;
                             d3.select('.table').data([data]).call(editTable());
                         })
                         .addTo(map);
