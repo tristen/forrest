@@ -4,7 +4,9 @@
   "description": "Find home geocoding csv files",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "watchify index.js -o js/bundle.js & serve",
+    "build": "NODE_ENV=production browserify index.js | uglifyjs -c -m > js/bundle.js"
   },
   "repository": {
     "type": "git",
@@ -22,8 +24,7 @@
   "homepage": "https://github.com/tristen/forrest",
   "dependencies": {
     "d3": "3.4.6",
-    "wookie": "~0.0.0",
-    "geocode-many": "git://github.com/tristen/geocode-many.git#39cd4fdd591fc3fdb",
+    "geocode-many": "1.0.0",
     "d3-metatable": "git://github.com/tristen/d3-metatable.git#0c89b406c92dc0541",
     "filesaver.js": "git://github.com/tristen/FileSaver.js.git#365e9729ec8927204",
     "csv2geojson": "3.7.0",
@@ -31,7 +32,8 @@
     "mapbox.js": "^1.6.3"
   },
   "devDependencies": {
+    "browserify": "~2.12.0",
     "uglify-js": "~2.2.5",
-    "browserify": "~2.12.0"
+    "watchify": "^2.2.1"
   }
 }
