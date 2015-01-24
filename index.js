@@ -4,9 +4,8 @@ var geocode = require('geocode-many');
 var geojson = require('geojson');
 var metatable = require('d3-metatable')(d3);
 var saveAs = require('filesaver.js');
-var cookie = require('wookie');
 
-var mapid, map, markers;
+var token, map, markers;
 var fileName = 'data';
 var set = d3.set([]);
 var data = [];
@@ -21,9 +20,9 @@ var exportOptions = [{
     value: 'geojson'
 }];
 
-if (!cookie.get('mapid')) {
-    h1('Enter a Mapbox Map ID');
-    sub('A <a href="https://www.mapbox.com/foundations/glossary/#mapid">Map ID</a> is a unique identifier to a map you have created on <a href="https://mapbox.com">Mapbox.com</a>');
+if (!localStorage.getItem('token')) {
+    h1('Enter your Access Token');
+    sub('Don\'t have an <a target="_blank" href="https://www.mapbox.com/help/create-api-access-token/">Access token?</a>');
 
     var form = d3.select('.js-output')
         .append('div')
@@ -31,7 +30,7 @@ if (!cookie.get('mapid')) {
 
     form.append('input')
         .attr('type', 'text')
-        .attr('placeholder', 'username.mapid')
+        .attr('placeholder', 'AccessToken')
         .classed('pad1 col8', true);
 
     form.append('a')
@@ -47,11 +46,11 @@ if (!cookie.get('mapid')) {
             });
 
             if (val.length) {
-                d3.json('http://a.tiles.mapbox.com/v3/' + val + '.json', function(error, json) {
+                d3.json('http://api.tiles.mapbox.com/v4/geocode/mapbox.places/toronto.json?access_token=' + val, function(error, json) {
                     if (error) {
-                        h1('Unknown Map ID. <a href="/forrest/">Try again?</a>.');
+                        h1('Unknown token. <a href="/forrest/">Try again?</a>.');
                     } else {
-                        cookie.set('mapid', val);
+                        localStorage.setItem('token', val);
                         init();
                     }
                 });
@@ -63,7 +62,7 @@ if (!cookie.get('mapid')) {
 }
 
 function init() {
-    mapid = cookie.get('mapid');
+    token = localStorage.getItem('token');
     h1('Import a comma separated file');
     sub('Could be a .csv, .tsv, or .dsv file.');
 
@@ -90,7 +89,7 @@ function init() {
         .on('click', function() {
             d3.event.stopPropagation();
             d3.event.preventDefault();
-            cookie.unset('mapid');
+            localStorage.removeItem('token');
             location.reload();
         });
 }
@@ -190,7 +189,7 @@ d3.select('.js-file')
                                 });
 
                             table.append('tbody');
-                            var geocoder = geocode(mapid, 0);
+                            var geocoder = geocode(token, 0);
                             geocoder(queries, transform, progress, done);
 
                             views
@@ -199,7 +198,8 @@ d3.select('.js-file')
                                 .classed('map row10 col12', true);
 
                             // Initialize a map here.
-                            map = L.mapbox.map('map', mapid);
+                            L.mapbox.accessToken = localStorage.getItem('token');
+                            map = L.mapbox.map('map', 'tristen.map-4s93c8qx');
                         }
                     });
             });
@@ -210,12 +210,12 @@ d3.select('.js-file')
 
 function progress(e) {
     var row = data[e.done - 1];
-    var results = (e.data) ? e.data.results : undefined;
+    var results = (e.data) ? e.data.features : undefined;
 
-    if (results && results.length && results[0].length) {
-        row.latitude = results[0][0].lat;
-        row.longitude = results[0][0].lon;
-        row.type = results[0][0].type;
+    if (results && results.length) {
+        row.latitude = results[0].center[1];
+        row.longitude = results[0].center[0];
+        row.type = results[0].type;
     }
 
     d3.select('table')
